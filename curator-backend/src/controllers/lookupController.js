@@ -6,27 +6,38 @@ const { Op } = require('sequelize'); // Может понадобиться дл
 // Общая функция для получения справочника (ИСПРАВЛЕННАЯ)
 const getLookupData = async (Model, req, res) => {
     try {
-        // Получаем имя первичного ключа из модели (например, 'categoryId')
+        // Определяем имя атрибута первичного ключа (напр., 'tagId')
         const pkAttributeName = Model.primaryKeyAttribute;
-        // Получаем реальное имя столбца БД для этого ключа (например, 'category_id')
-        const pkColumnName = Model.rawAttributes[pkAttributeName]?.field || pkAttributeName; // Используем .field или само имя атрибута, если field не задан
+        // Определяем имя столбца первичного ключа в БД (напр., 'tag_id')
+        const pkColumnName = Model.rawAttributes[pkAttributeName]?.field || pkAttributeName;
+
+        // Находим имя атрибута для отображения (первый атрибут, не являющийся ПК)
+        let displayNameAttribute = 'name'; // Имя по умолчанию
+        for (const attr in Model.rawAttributes) {
+            if (!Model.rawAttributes[attr].primaryKey) {
+                displayNameAttribute = attr; // Нашли! (напр., 'tagName')
+                break;
+            }
+        }
+        // Определяем имя столбца для отображения в БД (напр., 'tag_name')
+        const displayNameColumn = Model.rawAttributes[displayNameAttribute]?.field || displayNameAttribute;
+
+        console.log(`Lookup: Fetching ${Model.name}. PK: ${pkColumnName}, Display: ${displayNameColumn} (sorted by ${displayNameAttribute})`); // Лог для отладки
 
         const items = await Model.findAll({
-            // Используем имя столбца БД (`pkColumnName`) в запросе
             attributes: [
-                [pkColumnName, 'id'], // Выбрать столбец pkColumnName и назвать его 'id'
-                'name'                // Выбрать столбец 'name'
+                [pkColumnName, 'id'],         // Выбрать столбец ID (как 'id')
+                [displayNameColumn, 'name'] // Выбрать столбец имени (как 'name')
             ],
-            order: [['name', 'ASC']] // Сортировка по имени
+             // Сортируем по АТРИБУТУ модели (Sequelize сам подставит правильный столбец)
+            order: [[displayNameAttribute, 'ASC']]
         });
         res.json(items);
     } catch (error) {
-        // Логируем ошибку с именем модели для ясности
         console.error(`Error fetching ${Model.name}:`, error);
         res.status(500).json({ message: `Ошибка сервера при получении данных: ${Model.name}` });
     }
 };
-
 // Экспорты остаются прежними
 exports.getEventDirections = (req, res) => getLookupData(EventDirection, req, res);
 exports.getEventLevels = (req, res) => getLookupData(EventLevel, req, res);

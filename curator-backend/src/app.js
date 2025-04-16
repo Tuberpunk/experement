@@ -14,6 +14,7 @@ const studentGroupRoutes = require('./routes/studentGroupRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const curatorReportRoutes = require('./routes/curatorReportRoutes');
 const meRoutes = require('./routes/meRoutes'); // <-- Импорт новых роутов /me
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/groups', studentGroupRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/curator-reports', curatorReportRoutes);
 app.use('/api/me', meRoutes); // <-- Регистрация новых роутов /me
+app.use('/api/users', userRoutes);
 
 // Обработчики ошибок 404 и глобальный (должны быть в конце)
 // app.use((req, res, next) => { ... }); // 404 handler

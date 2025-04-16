@@ -16,6 +16,6 @@ router.get(
 );
 
 // Сюда можно добавить другие маршруты для /api/me/*
-// router.get('/profile', authenticateToken, meController.getMyProfile);
+// router.get('/profile', authentdicateToken, meController.getMyProfile);
 
 module.exports = router;

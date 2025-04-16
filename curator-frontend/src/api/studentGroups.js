@@ -54,18 +54,21 @@ export const deleteGroup = async (id) => {
 // Функция для получения списка кураторов (для формы) - пример
 // Возможно, понадобится отдельный эндпоинт на бэкенде
 export const getCurators = async () => {
-     try {
-        // Пример: получаем всех пользователей с ролью 'curator'
-        // Это потребует доработки бэкенда (эндпоинт /api/users?role=curator)
-        // const response = await apiClient.get('/users', { params: { role: 'curator', limit: 1000 } });
-        // return response.data.users || [];
-        // Заглушка:
-         return Promise.resolve([
-             { userId: 1, fullName: 'Иванов И.И. (Admin)' }, // Пример
-             { userId: 2, fullName: 'Петров П.П. (Curator)' }, // Пример
-         ]);
-     } catch (error) {
-         console.error("API Error fetching curators:", error);
-         return []; // Возвращаем пустой массив при ошибке
-     }
+    try {
+        // Отправляем запрос на бэкенд для получения пользователей с ролью 'curator'
+        // Запрашиваем большой лимит, чтобы получить всех (или настроить пагинацию в Autocomplete)
+        const response = await apiClient.get('/users', {
+            params: {
+                role: 'curator', // Фильтр по роли на бэкенде
+                limit: 1000,     // Получить достаточно большой список
+                sortBy: 'fullName' // Сортировать по имени для удобства
+            }
+        });
+        // Бэкенд возвращает объект { totalItems, ..., users: [...] }
+        // Нам нужен массив users
+        return response.data.users || []; // Возвращаем массив пользователей или пустой массив
+    } catch (error) {
+        console.error("API Error fetching curators:", error);
+        return []; // Возвращаем пустой массив при ошибке
+    }
 };
