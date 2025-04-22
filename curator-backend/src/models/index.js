@@ -115,7 +115,70 @@ db.Student.belongsToMany(db.CuratorReport, {
     as: 'AttendedReports',             // Псевдоним для доступа к отчетам, где студент участвовал
     timestamps: false
 });
+db.Event.belongsToMany(db.ParticipantCategory, {
+  through: 'event_participant_categories', // Имя связующей таблицы
+  foreignKey: 'event_id',
+  otherKey: 'category_id',
+  as: 'ParticipantCategories', // Псевдоним для include
+  timestamps: false
+});
+db.ParticipantCategory.belongsToMany(db.Event, {
+  through: 'event_participant_categories',
+  foreignKey: 'category_id',
+  otherKey: 'event_id',
+  as: 'Events', // Псевдоним для запросов из ParticipantCategory
+  timestamps: false
+});
 
+// Event <-> FundingSource (Многие-ко-Многим)
+db.Event.belongsToMany(db.FundingSource, {
+  through: 'event_funding_sources', // Имя связующей таблицы
+  foreignKey: 'event_id',
+  otherKey: 'source_id',
+  as: 'FundingSources', // Псевдоним для include
+  timestamps: false
+  // Если в event_funding_sources есть доп. поля (amount), нужна явная модель
+});
+db.FundingSource.belongsToMany(db.Event, {
+  through: 'event_funding_sources',
+  foreignKey: 'source_id',
+  otherKey: 'event_id',
+  as: 'Events', // Псевдоним для запросов из FundingSource
+  timestamps: false
+});
+
+// Event -> MediaLink (Один-ко-Многим)
+db.Event.hasMany(db.MediaLink, {
+  foreignKey: 'eventId',
+  as: 'MediaLinks', // Псевдоним для include
+  onDelete: 'CASCADE' // Автоматически удалять ссылки при удалении события
+});
+db.MediaLink.belongsTo(db.Event, {
+  foreignKey: 'eventId',
+  as: 'Event'
+});
+
+// Event -> EventMedia (Один-ко-Многим)
+db.Event.hasMany(db.EventMedia, {
+  foreignKey: 'eventId',
+  as: 'EventMedias', // Псевдоним для include
+  onDelete: 'CASCADE'
+});
+db.EventMedia.belongsTo(db.Event, {
+  foreignKey: 'eventId',
+  as: 'Event'
+});
+
+// Event -> InvitedGuest (Один-ко-Многим)
+db.Event.hasMany(db.InvitedGuest, {
+  foreignKey: 'eventId',
+  as: 'InvitedGuests', // Псевдоним для include
+  onDelete: 'CASCADE'
+});
+db.InvitedGuest.belongsTo(db.Event, {
+  foreignKey: 'eventId',
+  as: 'Event'
+});
 // --- Конец определения связей ---
 
 // Вызов метода associate, если он есть у моделей (альтернативный способ)

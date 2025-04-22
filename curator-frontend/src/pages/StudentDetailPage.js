@@ -24,6 +24,7 @@ import ConfirmationDialog from '../components/ConfirmationDialog';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale'; // Локаль для даты
 
+
 function StudentDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -79,9 +80,6 @@ function StudentDetailPage() {
                     )}
                 </Box>
                 <Divider sx={{ mb: 2 }} />
-                 <Typography variant="caption" color="error" component="div" sx={{mb: 2}}>
-                     ВАЖНО: Данные являются персональными. Соблюдайте конфиденциальность и требования законодательства!
-                 </Typography>
 
                  {/* --- Детальная информация --- */}
                  <Grid container spacing={3}>

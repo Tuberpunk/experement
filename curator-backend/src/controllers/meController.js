@@ -1,49 +1,78 @@
 // Полный путь: src/controllers/meController.js
-const { Student, StudentGroup } = require('../models'); // Импортируем нужные модели
+const { User, Role, Student, StudentGroup } = require('../models');
 const { Op } = require('sequelize');
 
-// GET /api/me/students - Получить список студентов текущего куратора
 exports.getMyStudents = async (req, res) => {
-    // ID пользователя берем из объекта req.user, добавленного authenticateToken
-    // Middleware isCurator уже гарантировало, что это куратор
     const curatorUserId = req.user.id;
+    console.log(`Workspaceing students for curator ID: ${curatorUserId}`);
 
     try {
-        // 1. Найти все группы, где текущий пользователь является куратором
         const groups = await StudentGroup.findAll({
             where: { curatorUserId: curatorUserId },
-            attributes: ['groupId'] // Выбираем только ID групп
+            attributes: ['groupId'],
+            raw: true
         });
 
-        // Если куратор не курирует ни одной группы
         if (!groups || groups.length === 0) {
-            console.log(`Curator ${curatorUserId} has no assigned groups.`);
-            return res.json([]); // Возвращаем пустой массив - это не ошибка
+            console.log(`No groups found for curator ID: ${curatorUserId}`);
+            return res.json([]);
         }
-
-        // Собираем массив ID групп
         const groupIds = groups.map(group => group.groupId);
-        console.log(`Curator ${curatorUserId} manages group IDs: ${groupIds.join(', ')}`); // Лог для отладки
+        console.log(`Curator ${curatorUserId} manages group IDs: ${groupIds.join(', ')}`);
 
-        // 2. Найти всех АКТИВНЫХ студентов из этих групп
         const students = await Student.findAll({
             where: {
-                groupId: { [Op.in]: groupIds }, // Студенты из найденных групп
-                isActive: true                  // Только активные
+                groupId: { [Op.in]: groupIds },
+                isActive: true
             },
-            // Выбираем только нужные поля для формы выбора
-            attributes: ['studentId', 'fullName', 'email'],
-            order: [['fullName', 'ASC']] // Сортируем по ФИО для удобства
+            // Включаем информацию о группе студента
+            include: [{
+                model: StudentGroup,
+                as: 'StudentGroup', // Используем псевдоним, заданный в models/index.js
+                attributes: ['groupName'] // Нам нужно только название группы
+            }],
+            // Выбираем нужные поля студента
+            attributes: ['studentId', 'fullName', 'email'], // Email может быть полезен для доп. информации
+            order: [['fullName', 'ASC']]
         });
 
-        console.log(`Found ${students.length} active students for curator ${curatorUserId}.`); // Лог для отладки
-        res.json(students); // Отправляем список студентов
+        // Преобразуем результат для фронтенда, добавляя groupName к объекту студента
+        const results = students.map(student => ({
+            studentId: student.studentId,
+            fullName: student.fullName,
+            email: student.email,
+            // Безопасно получаем groupName
+            groupName: student.StudentGroup?.groupName || 'Группа не найдена'
+        }));
+
+        console.log(`Found ${results.length} active students with group names for curator ${curatorUserId}.`);
+        res.json(results); // Отправляем массив студентов с groupName
 
     } catch (error) {
-        console.error(`Error fetching students for curator ${curatorUserId}:`, error);
-        res.status(500).json({ message: 'Ошибка сервера при получении списка студентов куратора' });
+        console.error(`Server error fetching students for curator ${curatorUserId}:`, error);
+        res.status(500).json({ message: 'Внутренняя ошибка сервера при получении списка студентов.' });
     }
 };
 
-// Сюда можно добавить другие функции для /api/me/*, например, getMyProfile
-// exports.getMyProfile = async (req, res) => { ... };
+exports.getMyProfile = async (req, res) => {
+    const userId = req.user.id;
+    try {
+        const userProfile = await User.findByPk(userId, { // <-- Теперь User определена
+            attributes: { exclude: ['passwordHash'] },
+            include: [{
+                model: Role, // <-- Теперь Role определена
+                as: 'Role',
+                attributes: ['roleName']
+            }]
+        });
+
+        if (!userProfile) {
+            return res.status(404).json({ message: 'Профиль пользователя не найден' });
+        }
+        res.json(userProfile);
+
+    } catch (error) {
+        console.error(`Error fetching profile for user ${userId}:`, error);
+        res.status(500).json({ message: 'Ошибка сервера при получении профиля' });
+    }
+};

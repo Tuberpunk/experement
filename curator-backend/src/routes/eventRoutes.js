@@ -2,8 +2,7 @@
 const express = require('express');
 const eventController = require('../controllers/eventController');
 const { authenticateToken, isAdmin, isCreatorOrAdmin } = require('../middleware/auth');
-// Дополнительно: можно добавить middleware для валидации входных данных
-// const { validateEventCreation, validateEventUpdate, validateStatusUpdate } = require('../middleware/validators');
+const upload = require('../middleware/upload'); // Если используется для других роутов
 
 const router = express.Router();
 
@@ -30,10 +29,10 @@ router.put(
 // Обновление статуса мероприятия по ID
 router.patch(
     '/:id/status',
-    authenticateToken,
-    /* validateStatusUpdate, */
-    eventController.loadEvent, // Загружаем событие
-    eventController.updateEventStatus // В контроллере будет своя проверка прав [6, 7, 16]
+    authenticateToken,      // Проверяем аутентификацию
+    eventController.loadEvent, // Загружаем событие в req.event
+    // Права доступа (админ или создатель с ограничениями) проверяются внутри контроллера updateEventStatus
+    eventController.updateEventStatus
 );
 
 // Удаление мероприятия по ID (только админ)

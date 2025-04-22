@@ -12,10 +12,11 @@ import {
     Box,
     Chip,
     IconButton, // Для возможного мобильного меню
-    Tooltip    // Для подсказок к иконкам
+    Tooltip,    // Для подсказок к иконкам
+    Avatar      // Для отображения инициалов
 } from '@mui/material';
 // Иконки Material UI
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // Можно использовать для Avatar fallback
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import GroupsIcon from '@mui/icons-material/Groups'; // Группы
@@ -24,6 +25,8 @@ import DescriptionIcon from '@mui/icons-material/Description'; // Докумен
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt'; // Студенты
 import LabelIcon from '@mui/icons-material/Label'; // Теги
 import AssessmentIcon from '@mui/icons-material/Assessment'; // Отчеты
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'; // Управление пользователями
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'; // Назначение события
 import LogoutIcon from '@mui/icons-material/Logout'; // Выход
 // Контекст аутентификации
 import { useAuth } from '../contexts/AuthContext'; // Убедитесь, что путь правильный
@@ -39,6 +42,17 @@ const getRoleDisplay = (roleName) => {
             return { label: roleName || 'Неизвестная роль', icon: null };
     }
 };
+
+// Вспомогательная функция для получения инициалов
+const getInitials = (name = '') => {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .filter((n, i, arr) => n && (i === 0 || i === arr.length - 1)) // Берем первую и последнюю букву ФИО, если есть
+    .join('')
+    .toUpperCase();
+};
+
 
 function MainLayout() {
     const { user, logout } = useAuth(); // Получаем пользователя и функцию выхода
@@ -70,6 +84,12 @@ function MainLayout() {
             backgroundColor: 'rgba(255, 255, 255, 0.08)'
         }
     });
+
+    // --- Функция перехода в профиль ---
+     const goToProfile = () => {
+         navigate('/profile');
+     };
+     // --------------------------------
 
 
     return (
@@ -112,47 +132,72 @@ function MainLayout() {
                                  {user?.role === 'administrator' ? 'Отчеты кураторов' : 'Мои Отчеты'}
                              </Button>
                          )}
-                         {/* Ссылка для админа на управление тегами */}
+                         {/* Ссылки для админа */}
                          {user?.role === 'administrator' && (
-                            <Button component={RouterLink} to="/admin/tags" startIcon={<LabelIcon />} sx={navButtonStyle('/admin/tags')}>
-                                 Теги
-                            </Button>
+                            <> {/* Используем фрагмент для группировки админских кнопок */}
+                                <Button component={RouterLink} to="/admin/tags" startIcon={<LabelIcon />} sx={navButtonStyle('/admin/tags')}>
+                                     Теги
+                                </Button>
+                                <Button component={RouterLink} to="/admin/users" startIcon={<ManageAccountsIcon />} sx={navButtonStyle('/admin/users')}>
+                                     Пользователи
+                                </Button>
+                                <Button component={RouterLink} to="/admin/assign-event" startIcon={<AssignmentIndIcon />} sx={navButtonStyle('/admin/assign-event')}>
+                                      Назначить событие
+                                 </Button>
+                             </>
                          )}
-                         {/* TODO: Добавить другие пункты меню */}
                      </Box>
 
                      {/* TODO: Добавить кнопку-бургер и выпадающее меню для мобильной версии */}
                      {/* <IconButton sx={{ display: { xs: 'flex', md: 'none' }, ml: 'auto' }} ... /> */}
 
-                    {/* Информация о пользователе и роли (прижимаем к правому краю) */}
+                    {/* Информация о пользователе и роли (прижимаем к правому краю, делаем кликабельной) */}
                     {user && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', ml: { xs: 0, md: 'auto' } }}> {/* ml:auto только на >md */}
-                            <AccountCircleIcon sx={{ mr: 1, display: { xs: 'none', sm: 'block' } }} />
-                            <Typography sx={{ mr: 1.5, display: { xs: 'none', lg: 'block' } }}>
-                                {user.fullName || user.email}
-                            </Typography>
-                            <Chip
-                                icon={roleDisplay.icon}
-                                label={roleDisplay.label}
-                                size="small"
-                                color={user.role === 'administrator' ? 'warning' : 'info'}
-                                variant="filled"
-                                sx={{ mr: 1 }}
-                            />
-                             {/* Кнопка Выйти (Иконка) */}
-                            <Tooltip title="Выйти">
-                                <IconButton color="inherit" onClick={handleLogout}>
-                                    <LogoutIcon />
-                                </IconButton>
-                             </Tooltip>
-                        </Box>
+                        <Tooltip title="Перейти в профиль">
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    ml: { xs: 0, md: 'auto' }, // ml:auto только на >md
+                                    cursor: 'pointer', // Показываем, что можно кликнуть
+                                    p: 0.5, // Небольшие отступы для области клика
+                                    borderRadius: 1,
+                                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)'} // Эффект при наведении
+                                }}
+                                onClick={goToProfile} // <-- Обработчик клика для перехода в профиль
+                            >
+                                {/* Аватар с инициалами */}
+                                <Avatar sx={{ width: 32, height: 32, mr: 1, fontSize: '0.875rem', bgcolor: 'secondary.light' }}>
+                                     {getInitials(user.fullName || '') || <AccountCircleIcon fontSize='small'/>} {/* Fallback иконка */}
+                                </Avatar>
+                                {/* Имя пользователя (скрывается на малых экранах) */}
+                                <Typography sx={{ mr: 1.5, display: { xs: 'none', lg: 'block' } }}>
+                                    {user.fullName || user.email}
+                                </Typography>
+                                {/* Роль */}
+                                <Chip
+                                    icon={roleDisplay.icon}
+                                    label={roleDisplay.label}
+                                    size="small"
+                                    color={user.role === 'administrator' ? 'warning' : 'info'}
+                                    variant="filled"
+                                    sx={{ mr: 1 }}
+                                />
+                            </Box>
+                        </Tooltip>
                     )}
+                     {/* Кнопка Выйти (Иконка) */}
+                    <Tooltip title="Выйти">
+                        <IconButton color="inherit" onClick={handleLogout} sx={{ ml: 1 }}> {/* Небольшой отступ слева */}
+                            <LogoutIcon />
+                        </IconButton>
+                     </Tooltip>
                 </Toolbar>
             </AppBar>
 
             {/* Основной контент страницы */}
             <Container component="main" sx={{ flexGrow: 1, py: { xs: 2, sm: 3 } }}> {/* Адаптивные отступы */}
-                <Outlet /> {/* Сюда рендерится содержимое дочерних роутов */}
+                <Outlet /> {/* Сюда будет рендериться содержимое дочерних роутов */}
             </Container>
 
             {/* Подвал */}

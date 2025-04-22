@@ -31,10 +31,28 @@ exports.getAllGroups = async (req, res) => {
     const sortBy = req.query.sortBy || 'groupName';
     const sortOrder = req.query.sortOrder || 'ASC';
 
-    const where = {};
+    const where = {}; // Начинаем с пустого объекта условий
     const include = [
-        { model: User, as: 'Curator', attributes: ['userId', 'fullName'] } // Включаем куратора
+        { model: User, as: 'Curator', attributes: ['userId', 'fullName'] }
     ];
+
+    const currentUser = req.user;
+    
+    if (currentUser.role === 'curator') {
+        // Если пользователь - куратор, показываем ТОЛЬКО его группы
+        where.curatorUserId = currentUser.id;
+        console.log(`Workspaceing groups for curator ID: ${currentUser.id}`);
+    } else if (currentUser.role === 'administrator') {
+        // Администратор может видеть все, но может фильтровать по куратору из запроса
+        if (req.query.curatorUserId) {
+            where.curatorUserId = req.query.curatorUserId;
+        }
+        console.log(`Workspaceing groups for administrator (filter by curatorId: ${req.query.curatorUserId || 'none'})`);
+    } else {
+        // Другие роли (если появятся) не видят никаких групп
+        console.log(`User role ${currentUser.role} has no access to view groups.`);
+        return res.json({ totalItems: 0, totalPages: 0, currentPage: 1, groups: [] });
+    }
 
     // Пример фильтрации
     if (req.query.groupName) {

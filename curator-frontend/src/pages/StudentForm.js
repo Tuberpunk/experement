@@ -201,7 +201,7 @@ function StudentForm({ mode }) {
                                         onChange={(_, newValue) => {
                                             field.onChange(newValue ? newValue.map(item => item.id) : []);
                                         }}
-                                        renderInput={(params) => <TextField {...params} label="Теги/Отметки" error={!!errors.tagIds} helperText={errors.tagIds?.message || "Напр., Активист, Спортсмен (Осторожно с перс. данными!)"} />}
+                                        renderInput={(params) => <TextField {...params} label="Теги/Отметки" error={!!errors.tagIds} helperText={errors.tagIds?.message || "Выберете одну или несколько"} />}
                                         renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))}
                                     />
                                 )}

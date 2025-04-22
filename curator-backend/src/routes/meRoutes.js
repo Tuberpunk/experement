@@ -15,6 +15,11 @@ router.get(
     meController.getMyStudents // Обработчик контроллера
 );
 
+router.get(
+    '/profile',
+     authenticateToken,
+      meController.getMyProfile
+    );
 // Сюда можно добавить другие маршруты для /api/me/*
 // router.get('/profile', authentdicateToken, meController.getMyProfile);
 

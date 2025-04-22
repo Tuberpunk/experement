@@ -15,7 +15,9 @@ const studentRoutes = require('./routes/studentRoutes');
 const curatorReportRoutes = require('./routes/curatorReportRoutes');
 const meRoutes = require('./routes/meRoutes'); // <-- Импорт новых роутов /me
 const userRoutes = require('./routes/userRoutes');
-
+const documentRoutes = require('./routes/documentRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+// В начале компонента EventDetailPage или в отдельном конфигурационном файле
 const app = express();
 
 // Middleware
@@ -37,6 +39,8 @@ app.use('/api/students', studentRoutes);
 app.use('/api/curator-reports', curatorReportRoutes);
 app.use('/api/me', meRoutes); // <-- Регистрация новых роутов /me
 app.use('/api/users', userRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Обработчики ошибок 404 и глобальный (должны быть в конце)
 // app.use((req, res, next) => { ... }); // 404 handler

@@ -1,4 +1,4 @@
-// src/components/DocumentForm.js
+// Полный путь: src/components/DocumentForm.js
 import React, { useState, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -7,7 +7,7 @@ import {
     TextField, Button, Grid, Box, CircularProgress, Alert, Typography
 } from '@mui/material';
 import PropTypes from 'prop-types';
-import { createDocument } from '../api/documents';
+import { createDocument } from '../api/documents'; // Убедитесь, что путь правильный
 import FileUploader from './FileUploader'; // Наш компонент загрузчика
 
 // Схема валидации
@@ -20,32 +20,33 @@ const documentSchema = yup.object().shape({
 
 function DocumentForm({ onSuccess, onClose }) {
     const [formError, setFormError] = useState('');
-    const [uploadedFileData, setUploadedFileData] = useState(null); // Храним данные загруженного файла
-    const [isUploading, setIsUploading] = useState(false); // Для блокировки кнопки во время загрузки файла
+    const [uploadedFileData, setUploadedFileData] = useState(null); // Храним данные загруженного файла ({ success, mediaUrl, filename, mediaType })
+    const [isUploading, setIsUploading] = useState(false); // Отдельный флаг для процесса ЗАГРУЗКИ ФАЙЛА
 
     const { control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(documentSchema),
         defaultValues: { title: '', category: '', description: '' }
     });
 
+    // Обработчик успешной ЗАГРУЗКИ ФАЙЛА через FileUploader
     const handleUploadSuccess = useCallback((fileData) => {
-        // fileData = { success: true, mediaUrl: '...', filename: '...' }
+        setIsUploading(false); // Загрузка файла завершена
         if (fileData?.mediaUrl) {
-            setUploadedFileData(fileData); // Сохраняем данные
-            setFormError(''); // Сбрасываем ошибку, если была
+            setUploadedFileData(fileData);
+            setFormError(''); // Сбрасываем ошибку выбора файла
         } else {
             setFormError("Ошибка: не удалось получить URL файла после загрузки.");
         }
-         setIsUploading(false); // Разблокируем кнопку отправки
     }, []);
 
-    const handleUploadStart = useCallback(() => {
-         setIsUploading(true);
-         setFormError(''); // Сбрасываем предыдущие ошибки
-         setUploadedFileData(null); // Сбрасываем старый файл при начале новой загрузки
+     // Обработчик начала загрузки файла
+     const handleUploadStart = useCallback(() => {
+        setIsUploading(true);
+        setFormError('');
+        setUploadedFileData(null); // Сбрасываем старый файл
     }, []);
 
-
+    // Обработчик ОТПРАВКИ ФОРМЫ (создание записи документа)
     const onSubmit = async (data) => {
         if (!uploadedFileData?.mediaUrl) {
             setFormError('Пожалуйста, загрузите файл документа.');
@@ -54,25 +55,32 @@ function DocumentForm({ onSuccess, onClose }) {
         setFormError('');
 
         const documentDataToSend = {
-            ...data,
-            docUrl: uploadedFileData.mediaUrl, // Берем URL из данных загруженного файла
-            // category и description могут быть пустыми строками, бэкенд сохранит их или null
+            title: data.title,
+            docUrl: uploadedFileData.mediaUrl, // Используем URL из загруженного файла
             category: data.category || null,
             description: data.description || null,
         };
 
         try {
             const newDocument = await createDocument(documentDataToSend);
-            onSuccess(newDocument); // Вызываем колбэк об успехе (передаем новый документ)
-            reset(); // Очищаем форму
-            setUploadedFileData(null); // Сбрасываем данные файла
-            onClose(); // Закрываем модальное окно/форму
+            onSuccess(newDocument); // Вызываем колбэк родителя об успехе
+            handleInternalClose(); // Очищаем форму и закрываем
         } catch (err) {
-            const message = err.response?.data?.message || err.message || 'Не удалось загрузить документ.';
+            const message = err.response?.data?.message || err.message || 'Не удалось сохранить документ.';
             setFormError(message);
             console.error("Document form submission error:", err);
         }
     };
+
+    // Функция для очистки и вызова onClose
+    const handleInternalClose = () => {
+        reset();
+        setUploadedFileData(null);
+        setFormError('');
+        setIsUploading(false);
+        onClose(); // Вызываем проп onClose
+    };
+
 
     return (
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -83,21 +91,18 @@ function DocumentForm({ onSuccess, onClose }) {
                      <Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название документа" required fullWidth error={!!errors.title} helperText={errors.title?.message} />} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                    <Controller name="category" control={control} render={({ field }) => <TextField {...field} label="Категория (напр., Положение, Приказ)" fullWidth />} />
+                    <Controller name="category" control={control} render={({ field }) => <TextField {...field} label="Категория (напр., Положение)" fullWidth />} />
                 </Grid>
                  <Grid item xs={12} sm={6}>
-                     {/* Поле для загрузки файла */}
+                     {/* Загрузчик файла */}
                      <FileUploader
                          onUploadSuccess={handleUploadSuccess}
+                         onUploadStart={handleUploadStart} // Передаем обработчик начала загрузки
                          buttonText="Выбрать и загрузить файл"
-                         // Можно ограничить типы файлов, например, PDF, DOCX
-                         // accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,image/*"
+                         accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,image/*,video/*" // Ограничиваем типы
                      />
-                     {/* Отображение имени загруженного файла */}
                      {uploadedFileData && (
-                         <Typography variant="caption" display="block" sx={{mt: 1}}>
-                             Загружен: {uploadedFileData.filename}
-                         </Typography>
+                         <Typography variant="caption" display="block" sx={{mt: 1}}> Загружен: {uploadedFileData.filename} </Typography>
                      )}
                  </Grid>
                  <Grid item xs={12}>
@@ -105,9 +110,9 @@ function DocumentForm({ onSuccess, onClose }) {
                  </Grid>
                  <Grid item xs={12}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, gap: 1 }}>
-                        <Button onClick={onClose} disabled={isSubmitting || isUploading}>Отмена</Button>
+                        <Button onClick={handleInternalClose} disabled={isSubmitting || isUploading}>Отмена</Button>
                         <Button type="submit" variant="contained" disabled={isSubmitting || isUploading || !uploadedFileData}>
-                             {(isSubmitting || isUploading) ? <CircularProgress size={24} /> : 'Сохранить документ'}
+                            {(isSubmitting || isUploading) ? <CircularProgress size={24} /> : 'Сохранить документ'}
                         </Button>
                     </Box>
                  </Grid>

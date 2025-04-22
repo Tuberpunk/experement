@@ -25,9 +25,11 @@ const Document = sequelize.define('Document', {
         type: DataTypes.TEXT, // Используем TEXT для потенциально длинных URL
         allowNull: false,
         field: 'doc_url',
+        /*
         validate: {
             isUrl: true // Проверка URL
         }
+        */
     },
     uploadedAt: {
         type: DataTypes.DATE,

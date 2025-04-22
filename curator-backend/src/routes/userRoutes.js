@@ -11,6 +11,7 @@ const router = express.Router();
 // Доступно всем авторизованным (для примера, можно заменить на isAdmin)
 router.get('/', authenticateToken, userController.getAllUsers);
 
+router.get('/', authenticateToken, isAdmin, userController.getAllUsers);
 // Сюда можно добавить роуты для других CRUD операций над пользователями
 // (обычно они требуют прав администратора)
 // router.get('/:id', authenticateToken, isAdmin, userController.getUserById);

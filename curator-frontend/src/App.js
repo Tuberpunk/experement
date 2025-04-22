@@ -22,6 +22,9 @@ import ManageTagsPage from './pages/admin/ManageTagsPage';
 import CuratorReportsPage from './pages/CuratorReportsPage';
 import CuratorReportDetailPage from './pages/CuratorReportDetailPage';
 import CuratorReportForm from './pages/CuratorReportForm';
+import ProfilePage from './pages/ProfilePage';
+import ManageUsersPage from './pages/admin/ManageUsersPage';
+import AssignEventPage from './pages/admin/AssignEventPage'; 
 // Для MUI Date Pickers
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -51,7 +54,8 @@ function App() {
                    <Route path="/groups/:id" element={<StudentGroupDetailPage />} />
                    {/* Документы */}
                    <Route path="/documents" element={<DocumentsPage />} />
-
+                   {/* Профиль*/}
+                   <Route path="/profile" element={<ProfilePage />} />
                     {/* --- НОВЫЕ РОУТЫ ДЛЯ СТУДЕНТОВ --- */}
                     <Route path="/curator-reports" element={<CuratorReportsPage />} />
                    <Route path="/curator-reports/new" element={<CuratorReportForm />} />
@@ -64,11 +68,13 @@ function App() {
                     <Route element={<PrivateRoute allowedRoles={['administrator']} />}>
                          <Route path="/groups/new" element={<StudentGroupForm mode="create" />} />
                          <Route path="/groups/:id/edit" element={<StudentGroupForm mode="edit" />} />
+                         <Route path="/admin/users" element={<ManageUsersPage />} />
                          {/* Админские роуты для студентов */}
                          <Route path="/students/new" element={<StudentForm mode="create" />} />
                          <Route path="/admin/tags" element={<ManageTagsPage />} />
                          <Route path="/students/:id/edit" element={<StudentForm mode="edit" />} />
                          {/* Другие админские роуты */}
+                         <Route path="/admin/assign-event" element={<AssignEventPage />} />
                          {/* <Route path="/admin/users" element={...} /> */}
                          {/* <Route path="/admin/tags" element={...} /> // Возможно, для управления тегами */}
                     </Route>

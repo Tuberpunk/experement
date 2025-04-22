@@ -30,37 +30,83 @@ exports.getAllStudents = async (req, res) => {
     const sortBy = req.query.sortBy || 'fullName';
     const sortOrder = req.query.sortOrder || 'ASC';
 
-    const where = {};
-    const include = [
+    const where = {}; // Условия для Student.findAll
+    const include = [ // Модели для включения
         { model: StudentGroup, as: 'StudentGroup', attributes: ['groupId', 'groupName'] },
         { model: StudentTag, as: 'Tags', attributes: ['tagId', 'tagName'], through: { attributes: [] } }
     ];
 
-    // Фильтры
-    if (req.query.fullName) {
-        where.fullName = { [Op.iLike]: `%${req.query.fullName}%` };
-    }
-    if (req.query.groupId) {
-        where.groupId = req.query.groupId;
-    }
-     if (req.query.isActive) {
-        where.isActive = req.query.isActive === 'true';
-    }
-    if (req.query.tagId) { // Фильтр по тегу
-        include.find(inc => inc.as === 'Tags').where = { tagId: req.query.tagId };
-        // distinct: true может потребоваться для корректного count
-    }
-    // TODO: Фильтр по группе куратора для роли 'curator'
+    const currentUser = req.user; // Пользователь из токена
 
     try {
+        // --- Логика фильтрации по роли пользователя ---
+        if (currentUser.role === 'curator') {
+            // 1. Найти все группы текущего куратора
+            const groups = await StudentGroup.findAll({
+                where: { curatorUserId: currentUser.id },
+                attributes: ['groupId'],
+                raw: true
+            });
+
+            if (!groups || groups.length === 0) {
+                // Если у куратора нет групп, он не видит студентов
+                return res.json({ totalItems: 0, totalPages: 0, currentPage: 1, students: [] });
+            }
+            const groupIds = groups.map(group => group.groupId);
+
+            // 2. Добавить условие для выборки студентов ТОЛЬКО из этих групп
+            where.groupId = { [Op.in]: groupIds };
+            console.log(`Workspaceing students for curator ${currentUser.id} in groups: ${groupIds.join(', ')}`);
+
+        } else if (currentUser.role === 'administrator') {
+            // Администратор может фильтровать по любой группе из запроса
+            if (req.query.groupId) {
+                where.groupId = req.query.groupId;
+            }
+            console.log(`Workspaceing students for administrator (filter by groupId: ${req.query.groupId || 'none'})`);
+        } else {
+            // Другие роли не видят студентов
+            console.log(`User role ${currentUser.role} has no access to view students.`);
+            return res.json({ totalItems: 0, totalPages: 0, currentPage: 1, students: [] });
+        }
+        // --- Конец логики фильтрации по роли ---
+
+        // Применяем остальные фильтры из запроса
+        if (req.query.fullName) {
+            where.fullName = { [Op.iLike]: `%${req.query.fullName}%` };
+        }
+        if (req.query.isActive !== undefined && req.query.isActive !== 'all') {
+             // Фильтр по статусу активности (true/false)
+             where.isActive = req.query.isActive === 'true';
+         }
+         if (req.query.tagId) { // Фильтр по тегу
+             // Нужно модифицировать include для фильтрации по тегу
+             const tagInclude = include.find(inc => inc.as === 'Tags');
+             if (tagInclude) { // Если include для тегов уже есть
+                 tagInclude.where = { tagId: req.query.tagId };
+                 tagInclude.required = true; // Делаем INNER JOIN для фильтрации
+             } else { // Если include для тегов не было добавлено по умолчанию
+                 include.push({
+                     model: StudentTag,
+                     as: 'Tags',
+                     attributes: [], // Не обязательно возвращать теги в списке для фильтрации
+                     where: { tagId: req.query.tagId },
+                     through: { attributes: [] },
+                     required: true // INNER JOIN
+                 });
+             }
+        }
+
+        // Выполняем запрос к БД
         const { count, rows } = await Student.findAndCountAll({
             where,
             include,
             limit,
             offset,
             order: [[sortBy, sortOrder]],
-            distinct: true // Рекомендуется при include с where на связанных таблицах
+            distinct: true // Важно при include с where на связанных таблицах (особенно M:N как теги)
         });
+
         res.json({
             totalItems: count,
             totalPages: Math.ceil(count / limit),
