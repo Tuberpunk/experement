@@ -5,6 +5,7 @@ const { authenticateToken, isAdmin, isCreatorOrAdmin } = require('../middleware/
 const upload = require('../middleware/upload'); // Если используется для других роутов
 
 const router = express.Router();
+router.get('/export',authenticateToken, eventController.exportEvents);
 
 // Получение списка мероприятий (с фильтрами)
 router.get('/', authenticateToken, eventController.getEvents); // [6, 7, 30, 32-34, 50, 52-55]
