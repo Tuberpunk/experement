@@ -7,6 +7,12 @@ const { authenticateToken, isAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+// --- НОВЫЕ МАРШРУТЫ ---
+// PUT /api/users/:id - Обновить пользователя (только Админ)
+router.put('/:id', authenticateToken, isAdmin, userController.updateUser);
+
+// DELETE /api/users/:id - Удалить пользователя (только Админ)
+router.delete('/:id', authenticateToken, isAdmin, userController.deleteUser);
 // GET /api/users - Получить список пользователей (с фильтром ?role=...)
 // Доступно всем авторизованным (для примера, можно заменить на isAdmin)
 router.get('/', authenticateToken, userController.getAllUsers);

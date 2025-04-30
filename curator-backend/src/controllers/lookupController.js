@@ -1,8 +1,9 @@
 // src/controllers/lookupController.js
 const {
-    EventDirection, EventLevel, EventFormat, ParticipantCategory, FundingSource, StudentTag // Добавлен StudentTag
+    EventDirection, EventLevel, EventFormat, ParticipantCategory, FundingSource, StudentTag, Role // Добавлен StudentTag
 } = require('../models');
 const { Op } = require('sequelize'); // Может понадобиться для проверки уникальности при обновлении
+
 // Общая функция для получения справочника (ИСПРАВЛЕННАЯ)
 const getLookupData = async (Model, req, res) => {
     try {
@@ -45,6 +46,7 @@ exports.getEventFormats = (req, res) => getLookupData(EventFormat, req, res);
 exports.getParticipantCategories = (req, res) => getLookupData(ParticipantCategory, req, res);
 exports.getFundingSources = (req, res) => getLookupData(FundingSource, req, res);
 exports.getStudentTags = (req, res) => getLookupData(StudentTag, req, res);
+exports.getRoles = (req, res) => getLookupData(Role, req, res);
 
 exports.createStudentTag = async (req, res) => {
     const { name } = req.body;

@@ -25,11 +25,12 @@ import CuratorReportForm from './pages/CuratorReportForm';
 import ProfilePage from './pages/ProfilePage';
 import ManageUsersPage from './pages/admin/ManageUsersPage';
 import AssignEventPage from './pages/admin/AssignEventPage'; 
+import ProfileEditPage from './pages/ProfileEditPage';
 // Для MUI Date Pickers
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import 'dayjs/locale/ru'; 
-
+import CalendarPage from './pages/CalendarPage';
 function App() {
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ru">
@@ -58,10 +59,11 @@ function App() {
                    <Route path="/profile" element={<ProfilePage />} />
                     {/* --- НОВЫЕ РОУТЫ ДЛЯ СТУДЕНТОВ --- */}
                     <Route path="/curator-reports" element={<CuratorReportsPage />} />
-                   <Route path="/curator-reports/new" element={<CuratorReportForm />} />
-                   <Route path="/curator-reports/:id" element={<CuratorReportDetailPage />} />
+                    <Route path="/curator-reports/new" element={<CuratorReportForm />} />
+                    <Route path="/curator-reports/:id" element={<CuratorReportDetailPage />} />
                     <Route path="/students" element={<StudentListPage />} />
                     <Route path="/students/:id" element={<StudentDetailPage />} />
+                    <Route path="/calendar" element={<CalendarPage />} />
                     {/* --- КОНЕЦ РОУТОВ ДЛЯ СТУДЕНТОВ --- */}
 
                     {/* --- Админские роуты --- */}
@@ -69,6 +71,7 @@ function App() {
                          <Route path="/groups/new" element={<StudentGroupForm mode="create" />} />
                          <Route path="/groups/:id/edit" element={<StudentGroupForm mode="edit" />} />
                          <Route path="/admin/users" element={<ManageUsersPage />} />
+                         <Route path="/profile/edit" element={<ProfileEditPage />} />
                          {/* Админские роуты для студентов */}
                          <Route path="/students/new" element={<StudentForm mode="create" />} />
                          <Route path="/admin/tags" element={<ManageTagsPage />} />

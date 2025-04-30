@@ -24,5 +24,13 @@ export const getMyProfile = async () => {
     }
 };
 
-// Сюда можно добавить функции для обновления профиля и т.д.
-// export const updateMyProfile = async (profileData) => { ... }
+export const updateMyProfile = async (profileData) => {
+    try {
+        // Отправляем PUT запрос на эндпоинт /api/me/profile
+        const response = await apiClient.put('/me/profile', profileData);
+        return response.data; // Возвращаем обновленные данные
+    } catch (error) {
+        console.error("API Error updating my profile:", error);
+        throw error;
+    }
+};

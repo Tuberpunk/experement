@@ -19,8 +19,9 @@ export const getEventFormats = () => fetchLookup('event-formats');
 export const getParticipantCategories = () => fetchLookup('participant-categories');
 export const getFundingSources = () => fetchLookup('funding-sources');
 export const getStudentTags = () => fetchLookup('student-tags'); // Уже была
-
+export const getRoles = () => fetchLookup('roles');
 // --- НОВЫЕ ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ТЕГАМИ ---
+
 export const createStudentTag = async (tagData) => {
     // tagData = { name: 'Новый тег' }
     try {

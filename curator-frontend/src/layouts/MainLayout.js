@@ -28,6 +28,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment'; // Отчеты
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'; // Управление пользователями
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'; // Назначение события
 import LogoutIcon from '@mui/icons-material/Logout'; // Выход
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 // Контекст аутентификации
 import { useAuth } from '../contexts/AuthContext'; // Убедитесь, что путь правильный
 
@@ -117,14 +118,17 @@ function MainLayout() {
                         <Button component={RouterLink} to="/events" startIcon={<EventNoteIcon />} sx={navButtonStyle('/events')}>
                             Мероприятия
                         </Button>
-                         <Button component={RouterLink} to="/groups" startIcon={<GroupsIcon />} sx={navButtonStyle('/groups')}>
+                        <Button component={RouterLink} to="/groups" startIcon={<GroupsIcon />} sx={navButtonStyle('/groups')}>
                              Группы
-                         </Button>
+                        </Button>
                           <Button component={RouterLink} to="/documents" startIcon={<DescriptionIcon />} sx={navButtonStyle('/documents')}>
                              Документы
-                         </Button>
+                        </Button>
                           <Button component={RouterLink} to="/students" startIcon={<PeopleAltIcon />} sx={navButtonStyle('/students')}>
                              Студенты
+                        </Button>
+                            <Button component={RouterLink} to="/calendar" startIcon={<CalendarMonthIcon />} sx={navButtonStyle('/calendar')}>
+                             Календарь
                          </Button>
                          {/* Ссылка на Отчеты */}
                          {(user?.role === 'curator' || user?.role === 'administrator') && (

@@ -39,9 +39,10 @@ router.patch(
 // Удаление мероприятия по ID (только админ)
 router.delete(
     '/:id',
-    authenticateToken,
-    isAdmin, // Только администратор [7]
-    eventController.deleteEvent
+    authenticateToken, // Проверка аутентификации
+    isAdmin,           // <-- ТЕПЕРЬ ТОЛЬКО АДМИН
+    eventController.loadEvent, // Загружаем событие перед удалением (опционально, можно убрать)
+    eventController.deleteEvent // Контроллер удаления
 );
 
 

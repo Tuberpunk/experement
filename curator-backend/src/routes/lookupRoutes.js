@@ -15,6 +15,7 @@ router.get('/funding-sources', authenticateToken, lookupController.getFundingSou
 router.get('/student-tags', authenticateToken, lookupController.getStudentTags); // Чтение тегов
 
 // --- НОВЫЕ CUD РОУТЫ ДЛЯ ТЕГОВ (ТОЛЬКО АДМИН) ---
+router.get('/roles', authenticateToken, isAdmin, lookupController.getRoles);
 router.post('/student-tags', authenticateToken, isAdmin, lookupController.createStudentTag);
 router.put('/student-tags/:id', authenticateToken, isAdmin, lookupController.updateStudentTag);
 router.delete('/student-tags/:id', authenticateToken, isAdmin, lookupController.deleteStudentTag);
