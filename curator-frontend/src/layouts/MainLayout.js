@@ -207,7 +207,7 @@ function MainLayout() {
             {/* Подвал */}
             <Box component="footer" sx={{ bgcolor: 'background.paper', p: 2, mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
                  <Typography variant="body2" color="text.secondary" align="center">
-                   © {new Date().getFullYear()} Ваш Университет. Все права защищены.
+                   © {new Date().getFullYear()} Все права защищены.
                  </Typography>
             </Box>
         </Box>
