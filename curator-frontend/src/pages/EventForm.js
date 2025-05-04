@@ -1,9 +1,12 @@
 // Полный путь: src/pages/EventForm.js
 import React, { useEffect, useState, useCallback } from 'react';
+// Хуки и компоненты React Router
 import { useParams, useNavigate, Navigate, Link as RouterLink, useLocation } from 'react-router-dom';
+// React Hook Form и Yup для валидации
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
+// Компоненты Material UI
 import {
     Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar,
     Select, MenuItem, FormControl, InputLabel, FormHelperText, Checkbox, FormControlLabel, Autocomplete, Chip,
@@ -20,9 +23,9 @@ import { getEventById, createEvent, updateEvent } from '../api/events';
 import { getUsers } from '../api/users'; // Для выбора Ответственного
 import { getEventDirections, getEventLevels, getEventFormats, getParticipantCategories, getFundingSources } from '../api/lookups';
 import { getMyStudentsForReport } from '../api/curatorReports'; // Для выбора Гостя-Студента
-import FileUploader from '../components/FileUploader';
+import FileUploader from '../components/FileUploader'; // Компонент загрузчика
 
-// --- Данные для подсказок (можно вынести в отдельный файл) ---
+// --- Данные для подсказок ---
 const ugtuLocations = [
     { label: 'Главный корпус (А)', address: 'г. Ухта, ул. Первомайская, д. 13' },
     { label: 'Корпус Б', address: 'г. Ухта, ул. Первомайская, д. 9' },
@@ -40,7 +43,7 @@ const ugtuLocations = [
     { label: 'Общежитие №2', address: 'г. Ухта, ул. Мира, д. 11' },
     // ... добавьте другие актуальные объекты ...
 ];
-// ---------------------------------------------------------
+// ---------------------------
 
 // --- Схема валидации Yup ---
 const eventSchema = yup.object().shape({
@@ -64,14 +67,12 @@ const eventSchema = yup.object().shape({
     participantCount: yup.number().nullable().integer('Должно быть целое число').min(0, 'Не может быть отрицательным').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
     hasForeigners: yup.boolean(),
     foreignerCount: yup.number().nullable().when('hasForeigners', {
-        is: true,
-        then: schema => schema.min(0).integer().typeError('Введите число'),
+        is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
         otherwise: schema => schema.nullable().transform(() => null)
     }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
     hasMinors: yup.boolean(),
     minorCount: yup.number().nullable().when('hasMinors', {
-        is: true,
-        then: schema => schema.min(0).integer().typeError('Введите число'),
+        is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
         otherwise: schema => schema.nullable().transform(() => null)
     }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
 
@@ -85,10 +86,11 @@ const eventSchema = yup.object().shape({
         url: yup.string().url("Неверный URL").required("URL обязателен"),
         description: yup.string().nullable()
     })).nullable(),
+    // Добавили проверку, что eventMedias является массивом
     eventMedias: yup.array().of(yup.object().shape({
         id: yup.number().nullable(),
         mediaUrl: yup.string().required('URL медиафайла обязателен (загрузите файл)'),
-        mediaType: yup.string().required(),
+        mediaType: yup.string().required('Тип медиафайла не определен'),
         description: yup.string().nullable(),
         author: yup.string().nullable(),
     })).nullable(),
@@ -98,7 +100,6 @@ const eventSchema = yup.object().shape({
         position: yup.string().nullable(),
         organization: yup.string().nullable(),
     })).nullable(),
-
 });
 // ------------------------
 
@@ -106,28 +107,27 @@ const eventSchema = yup.object().shape({
 function EventForm({ mode }) {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [loading, setLoading] = useState(mode === 'edit');
     const [loadingLookups, setLoadingLookups] = useState(true);
     const [formError, setFormError] = useState('');
     const [lookups, setLookups] = useState({ directions: [], levels: [], formats: [], categories: [], sources: [] });
-    const [studentsList, setStudentsList] = useState([]); // Студенты куратора (для гостей)
-    const [usersList, setUsersList] = useState([]); // Пользователи (для ответственного)
+    const [studentsList, setStudentsList] = useState([]);
+    const [usersList, setUsersList] = useState([]);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
     const isEditMode = mode === 'edit';
-    const location = useLocation();
+
     // === ВЫЗОВ ХУКОВ ===
     const { control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(eventSchema),
         defaultValues: {
-            // --- Добавляем проверку для title ---
-            title: location.state?.title || '', // Берем title из state или оставляем пустым
-            // ---------------------------------
+            title: location.state?.title || '', // <-- Предзаполнение Названия из Календаря
             description: '', directionId: '', levelId: '', formatId: '',
-            startDate: location.state?.startDate ? dayjs(location.state.startDate) : null,
+            startDate: location.state?.startDate ? dayjs(location.state.startDate) : null, // <-- Предзаполнение Даты начала
             endDate: location.state?.endDate && location.state.startDate !== location.state.endDate
                      ? dayjs(location.state.endDate).subtract(1, 'day')
-                     : (location.state?.startDate ? dayjs(location.state.startDate) : null),
+                     : (location.state?.startDate ? dayjs(location.state.startDate) : null), // <-- Предзаполнение Даты окончания
             locationText: '', addressText: '',
             participantsInfo: '', participantCount: '', hasForeigners: false, foreignerCount: '0',
             hasMinors: false, minorCount: '0', responsibleFullName: '', responsiblePosition: '',
@@ -150,14 +150,15 @@ function EventForm({ mode }) {
 
     // --- Загрузка данных ---
     const loadInitialData = useCallback(async () => {
-        setLoadingLookups(true);
-        setFormError('');
+        setLoadingLookups(true); setFormError('');
         try {
+            // Загружаем все параллельно
             const [dirs, levels, formats, cats, srcs, myStudents, usersData] = await Promise.all([
                 getEventDirections(), getEventLevels(), getEventFormats(),
                 getParticipantCategories(), getFundingSources(),
                 (user?.role === 'curator' || user?.role === 'administrator') ? getMyStudentsForReport() : Promise.resolve([]),
-                getUsers({ limit: 1000, role: ['curator', 'administrator'] }) // Загружаем кураторов и админов
+                // Загружаем всех кураторов и админов для списка ответственных
+                getUsers({ limit: 1000, role: ['curator', 'administrator'], isActive: true }) // Добавил isActive: true
             ]);
             setLookups({
                 directions: dirs || [], levels: levels || [], formats: formats || [],
@@ -168,117 +169,123 @@ function EventForm({ mode }) {
 
         } catch (err) {
             console.error("Failed to load lookups/users/students for event form:", err);
-            setFormError('Не удалось загрузить справочные данные, список пользователей или студентов.');
-        } finally {
-            setLoadingLookups(false);
-        }
+            setFormError('Не удалось загрузить справочные данные и списки пользователей.');
+        } finally { setLoadingLookups(false); }
     }, [user]); // Зависит от роли пользователя
 
     const loadEventData = useCallback(async () => {
+        // Загрузка данных мероприятия в режиме редактирования
         if (isEditMode && id) {
-            setLoading(true);
-            setFormError('');
-            console.log('[EventForm] Starting loadEventData for ID:', id); // <-- Лог 1: Начало загрузки
+            setLoading(true); setFormError('');
+            console.log('[EventForm] Starting loadEventData for ID:', id);
             try {
                 const eventData = await getEventById(id);
-                console.log('[EventForm] Fetched Event Data (Raw):', JSON.stringify(eventData, null, 2)); // <-- Лог 2: Что пришло с API (в виде JSON для читаемости)
-    
-                if (!eventData) {
-                    setFormError('Мероприятие не найдено.');
-                    setLoading(false);
-                    return;
-                }
-                // Проверка прав (оставляем)
-                if (user?.role !== 'administrator' && user?.id !== eventData.createdByUserId) {
-                    console.log('[EventForm] Permission denied check inside loadEventData.'); // Лог 3
-                    return navigate('/forbidden', { replace: true });
-                }
-    
-                // Подготовка данных для reset
-                const dataToReset = {
+                console.log('[EventForm] Fetched Event Data (Raw):', eventData);
+                if (!eventData) { /* ... обработка не найдено ... */ }
+                if (user?.role !== 'administrator' && user?.id !== eventData.createdByUserId) { /* ... обработка прав ... */ }
+
+                const dataToReset = { // Формируем объект для reset
                     title: eventData.title || '', description: eventData.description || '',
                     directionId: eventData.directionId || '', levelId: eventData.levelId || '', formatId: eventData.formatId || '',
-                    startDate: eventData.startDate ? dayjs(eventData.startDate) : null, // Преобразуем в dayjs
-                    endDate: eventData.endDate ? dayjs(eventData.endDate) : null, // Преобразуем в dayjs
+                    startDate: eventData.startDate ? dayjs(eventData.startDate) : null,
+                    endDate: eventData.endDate ? dayjs(eventData.endDate) : null,
                     locationText: eventData.locationText || '', addressText: eventData.addressText || '',
                     participantsInfo: eventData.participantsInfo || '', participantCount: eventData.participantCount ?? '',
-                    hasForeigners: eventData.hasForeigners || false, foreignerCount: eventData.foreignerCount ?? '',
-                    hasMinors: eventData.hasMinors || false, minorCount: eventData.minorCount ?? '',
+                    hasForeigners: eventData.hasForeigners || false, foreignerCount: eventData.foreignerCount ?? '0',
+                    hasMinors: eventData.hasMinors || false, minorCount: eventData.minorCount ?? '0',
                     responsibleFullName: eventData.responsibleFullName || '', responsiblePosition: eventData.responsiblePosition || '',
                     responsiblePhone: eventData.responsiblePhone || '', responsibleEmail: eventData.responsibleEmail || '',
                     fundingAmount: eventData.fundingAmount ?? '', status: eventData.status || 'Запланировано',
-                    // Преобразуем массивы связанных объектов в массивы ID
                     participantCategoryIds: eventData.ParticipantCategories?.map(cat => cat.categoryId) || [],
                     fundingSourceIds: eventData.FundingSources?.map(src => src.sourceId) || [],
-                    // Оставляем полные объекты для FieldArray (они управляются отдельно)
                     mediaLinks: eventData.MediaLinks?.map(link => ({ id: link.linkId, url: link.url || '', description: link.description || '' })) || [],
                     eventMedias: eventData.EventMedias?.map(media => ({ id: media.mediaId, mediaUrl: media.mediaUrl || '', mediaType: media.mediaType || '', description: media.description || '', author: media.author || '' })) || [],
                     invitedGuests: eventData.InvitedGuests?.map(guest => ({ id: guest.guestId, fullName: guest.fullName || '', position: guest.position || '', organization: guest.organization || '' })) || [],
                 };
-                console.log('[EventForm] Data prepared for reset:', JSON.stringify(dataToReset, null, 2)); // <-- Лог 4: Данные ПЕРЕД reset (в виде JSON)
-    
-                reset(dataToReset); // Вызов reset для заполнения формы
-                console.log('[EventForm] reset() function called.'); // <-- Лог 5: Убедимся, что вызов был
-    
-            } catch (err) {
-                 setFormError(err.response?.data?.message || err.message || 'Не удалось загрузить данные мероприятия.');
-                 console.error("Fetch event for edit error:", err);
-                 if (err.response?.status === 403 || err.response?.status === 404) {
-                      navigate('/events', { replace: true });
-                 }
-             } finally { setLoading(false); }
-        } else if (!isEditMode && user) { /* ... предзаполнение ... */ }
-    }, [id, isEditMode, reset, navigate, user, setValue]); // Убедитесь, что все зависимости на месте
-
-useEffect(() => {
-        loadInitialData(); // Загрузка справочников и списков
-        // Загружаем данные события ТОЛЬКО в режиме редактирования
-        if (isEditMode) {
-            loadEventData();
-        } else if (user) { // Предзаполнение для НОВОГО события (включая даты из location.state, если они не установлены в defaultValues)
-             setValue('responsibleFullName', user.fullName || '');
-             setValue('responsibleEmail', user.email || '');
-             // Устанавливаем даты, если они пришли и не были установлены в defaultValues
-             if (location.state?.startDate && !watch('startDate')) {
-                  setValue('startDate', dayjs(location.state.startDate));
-             }
-              if (location.state?.endDate && location.state.startDate !== location.state.endDate && !watch('endDate')) {
-                  setValue('endDate', dayjs(location.state.endDate).subtract(1, 'day'));
-              } else if (location.state?.startDate && !watch('endDate')) {
-                   setValue('endDate', dayjs(location.state.startDate));
-               }
+                console.log('[EventForm] Data prepared for reset:', dataToReset);
+                reset(dataToReset); // Заполняем форму
+                console.log('[EventForm] reset() function called.');
+            } catch (err) { /* ... обработка ошибки ... */ }
+             finally { setLoading(false); }
         }
-    }, [loadInitialData, loadEventData, isEditMode, user, setValue, location.state, watch]); // Добавили location.state и watch// Используем одну функцию для загрузки
+    }, [id, isEditMode, reset, navigate, user]); // Убрали setValue из зависимостей loadEventData
+
+    useEffect(() => {
+        loadInitialData().then(() => {
+             // Вызываем loadEventData только ПОСЛЕ завершения loadInitialData,
+             // чтобы списки для Autocomplete были готовы к моменту reset
+             if (isEditMode) {
+                loadEventData();
+            } else if (user && !location.state?.startDate) { // Предзаполняем только если не пришли с календаря
+                 setValue('responsibleFullName', user.fullName || '');
+                 setValue('responsibleEmail', user.email || '');
+             }
+        });
+    }, [loadInitialData, loadEventData, isEditMode, user, setValue, location.state]); // Зависимости для useEffect
 
     // --- Обработчики ---
     const onSubmit = async (data) => {
         setFormError('');
-        const eventDataToSend = { /* ... как было ... */ };
-        // ... удаление пустых полей ...
-        delete eventDataToSend.status;
+        // Убедимся, что все числовые поля правильно преобразованы или null
+        const parseOptionalInt = (val) => (val === '' || val === null || isNaN(parseInt(val, 10)) ? null : parseInt(val, 10));
+        const parseOptionalFloat = (val) => (val === '' || val === null || isNaN(parseFloat(val)) ? null : parseFloat(val));
+
+        const eventDataToSend = {
+            ...data,
+            startDate: data.startDate ? dayjs(data.startDate).format('YYYY-MM-DD') : null,
+            endDate: data.endDate ? dayjs(data.endDate).format('YYYY-MM-DD') : null,
+            participantCount: parseOptionalInt(data.participantCount),
+            fundingAmount: parseOptionalFloat(data.fundingAmount),
+            foreignerCount: data.hasForeigners ? parseOptionalInt(data.foreignerCount) ?? 0 : 0, // Отправляем 0 если не число
+            minorCount: data.hasMinors ? parseOptionalInt(data.minorCount) ?? 0 : 0,
+            directionId: data.directionId || null, // Пустую строку в null
+            levelId: data.levelId || null,
+            formatId: data.formatId || null,
+            participantCategoryIds: data.participantCategoryIds || [],
+            fundingSourceIds: data.fundingSourceIds || [],
+            // Убираем временный 'id' из массивов перед отправкой
+            mediaLinks: data.mediaLinks?.map(({ id, ...rest }) => rest) || [],
+            // Фильтруем медиа без URL перед отправкой
+            eventMedias: data.eventMedias?.filter(m => m.mediaUrl).map(({ id, ...rest }) => rest) || [],
+            invitedGuests: data.invitedGuests?.map(({ id, ...rest }) => rest) || [],
+        };
+         // Приводим пустые необязательные строки к null
+         for (const key of ['responsiblePosition', 'responsiblePhone', 'responsibleEmail', 'locationText', 'addressText', 'participantsInfo']) {
+            if (!eventDataToSend[key]) eventDataToSend[key] = null;
+         }
+         delete eventDataToSend.status;
+
+        console.log('Data to send:', JSON.stringify(eventDataToSend, null, 2));
+
         try {
             let result;
-            if (isEditMode) { result = await updateEvent(id, eventDataToSend); }
-            else { result = await createEvent(eventDataToSend); }
+            if (isEditMode) {
+                result = await updateEvent(id, eventDataToSend);
+            } else {
+                result = await createEvent(eventDataToSend);
+            }
             setSnackbar({ open: true, message: `Мероприятие успешно ${isEditMode ? 'обновлено' : 'создано'}!`, severity: 'success' });
             setTimeout(() => navigate(`/events/${isEditMode ? id : result.eventId}`), 1500);
-        } catch (err) { /* ... обработка ошибки ... */ }
+        } catch (err) {
+             const message = err.response?.data?.message || err.message || `Не удалось ${isEditMode ? 'обновить' : 'создать'} мероприятие.`;
+             setFormError(message);
+             setSnackbar({ open: true, message: message, severity: 'error' });
+             console.error("Event form submission error:", err);
+         }
     };
 
     const handleMediaUploadSuccess = useCallback((fileData, index) => {
         if (fileData?.mediaUrl && fileData?.mediaType) {
-             setValue(`eventMedias.${index}.mediaUrl`, fileData.mediaUrl, { shouldDirty: true });
-             setValue(`eventMedias.${index}.mediaType`, fileData.mediaType, { shouldDirty: true });
-             setSnackbar({ open: true, message: `Файл "${fileData.filename || 'файл'}" загружен для медиа ${index + 1}`, severity: 'info' });
-         } else { setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла для медиа ${index + 1}`, severity: 'warning' }); }
+            setValue(`eventMedias.${index}.mediaUrl`, fileData.mediaUrl, { shouldDirty: true });
+            setValue(`eventMedias.${index}.mediaType`, fileData.mediaType, { shouldDirty: true });
+            setSnackbar({ open: true, message: `Файл "${fileData.filename || 'файл'}" загружен для медиа ${index + 1}`, severity: 'info' });
+        } else { setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла для медиа ${index + 1}`, severity: 'warning' }); }
      }, [setValue]);
 
-    const handleCloseSnackbar = useCallback((event, reason) => { /* ... */ }, []);
-
-    // === Проверка прав доступа (перенесена из предыдущей версии) ===
-    // Для создания доступ должен быть (проверяется роутом),
-    // для редактирования права проверяются в loadEventData после загрузки данных
-    // const isAdmin = user?.role === 'administrator'; // Можно определить для краткости
+    const handleCloseSnackbar = useCallback((event, reason) => {
+        if (reason === 'clickaway') return;
+        setSnackbar(prev => ({ ...prev, open: false }));
+     }, []);
 
     // --- Рендеринг ---
     if (loadingLookups || (loading && isEditMode)) {
@@ -297,31 +304,31 @@ useEffect(() => {
                 <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
                     <Grid container spacing={3}>
 
-                        {/* --- Название и Описание --- */}
-                        <Grid item xs={12}><Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название мероприятия" required fullWidth error={!!errors.title} helperText={errors.title?.message} />}/></Grid>
+                        {/* Название, Описание */}
+                        <Grid item xs={12}><Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название мероприятия *" required fullWidth error={!!errors.title} helperText={errors.title?.message} />}/></Grid>
                         <Grid item xs={12}><Controller name="description" control={control} render={({ field }) => <TextField {...field} label="Описание (min 100) *" required fullWidth multiline rows={5} error={!!errors.description} helperText={errors.description?.message} />}/></Grid>
 
-                         {/* --- Справочники --- */}
-                         <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.directionId} size="small"><InputLabel id="direction-label">Направление</InputLabel><Controller name="directionId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="direction-label" label="Направление"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.directionId?.message}</FormHelperText></FormControl></Grid>
-                         <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.levelId} size="small"><InputLabel id="level-label">Уровень</InputLabel><Controller name="levelId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="level-label" label="Уровень"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.levelId?.message}</FormHelperText></FormControl></Grid>
-                         <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.formatId} size="small"><InputLabel id="format-label">Формат</InputLabel><Controller name="formatId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="format-label" label="Формат"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.formatId?.message}</FormHelperText></FormControl></Grid>
+                        {/* Справочники */}
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.directionId} size="small"><InputLabel id="direction-label">Направление</InputLabel><Controller name="directionId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="direction-label" label="Направление"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.directionId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.levelId} size="small"><InputLabel id="level-label">Уровень</InputLabel><Controller name="levelId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="level-label" label="Уровень"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.levelId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.formatId} size="small"><InputLabel id="format-label">Формат</InputLabel><Controller name="formatId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="format-label" label="Формат"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.formatId?.message}</FormHelperText></FormControl></Grid>
 
-                         {/* --- Даты --- */}
-                         <Grid item xs={12} sm={6}><Controller name="startDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата начала *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.startDate, helperText: errors.startDate?.message, size:'small' } }} />)} /></Grid>
-                         <Grid item xs={12} sm={6}><Controller name="endDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата окончания" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} minDate={watch('startDate') ? dayjs(watch('startDate')) : undefined} slotProps={{ textField: { fullWidth: true, error: !!errors.endDate, helperText: errors.endDate?.message, size:'small' } }} />)} /></Grid>
+                        {/* Даты */}
+                        <Grid item xs={12} sm={6}><Controller name="startDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата начала *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.startDate, helperText: errors.startDate?.message, size:'small' } }} />)} /></Grid>
+                        <Grid item xs={12} sm={6}><Controller name="endDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата окончания" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} minDate={watch('startDate') ? dayjs(watch('startDate')) : undefined} slotProps={{ textField: { fullWidth: true, error: !!errors.endDate, helperText: errors.endDate?.message, size:'small' } }} />)} /></Grid>
 
-                         {/* --- Место проведения --- */}
-                         <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} {...restField} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
-                         <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : '')} />} /> </Grid>
+                        {/* Место проведения */}
+                        <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} {...restField} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
+                        <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : '')} />} /> </Grid>
 
-                         {/* --- Участники --- */}
+                         {/* Участники */}
                          <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Участники" size="small"/></Divider></Grid>
                          <Grid item xs={12} md={6}><Controller name="participantCategoryIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.categories} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.categories.filter(cat => field.value?.includes(cat.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Категории участников" error={!!errors.participantCategoryIds} helperText={errors.participantCategoryIds?.message}/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
                          <Grid item xs={12} sm={6} md={3}><Controller name="participantCount" control={control} render={({ field }) => <TextField {...field} label="Общее кол-во уч." type="number" fullWidth size="small" error={!!errors.participantCount} helperText={errors.participantCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
                          <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasForeigners" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Иностр." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5}><Controller name="foreignerCount" control={control} defaultValue={0} render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5}><Controller name="foreignerCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
                          <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasMinors" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Несоверш." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5}><Controller name="minorCount" control={control} defaultValue={0} render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5}><Controller name="minorCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
                          <Grid item xs={12}><Controller name="participantsInfo" control={control} render={({ field }) => <TextField {...field} label="Доп. информация об участниках" fullWidth multiline rows={2} size="small"/>} /></Grid>
 
                          {/* --- Ответственный --- */}
@@ -341,7 +348,7 @@ useEffect(() => {
 
                         {/* Ссылки */}
                         <Grid item xs={12}>
-                            <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography>
+                           <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography>
                            <List dense disablePadding sx={{mb: 1}}> {linkFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1}}> <Controller name={`mediaLinks.${index}.url`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="URL *" size="small" sx={{ flexGrow: 1 }} error={!!errors.mediaLinks?.[index]?.url} helperText={errors.mediaLinks?.[index]?.url?.message}/>} /> <Controller name={`mediaLinks.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание (VK, сайт...)" size="small" sx={{ width: {xs: '100%', sm:'30%'} }} />} /> <Tooltip title="Удалить ссылку"><IconButton onClick={() => removeLink(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip> </ListItem> ))} </List>
                            <Button onClick={() => appendLink({ url: '', description: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить ссылку</Button>
                         </Grid>

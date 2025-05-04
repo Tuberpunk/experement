@@ -10,12 +10,14 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres', // Явно указываем протокол
     logging: false, // Отключить логирование SQL (или настроить по желанию)
+    /*
     dialectOptions: {
         ssl: {
             require: true, // Часто требуется для подключения к БД на Render
             rejectUnauthorized: false // Может понадобиться, если Render использует самоподписанные сертификаты (проверьте документацию Render)
         }
     },
+    */
     define: {
         timestamps: true,
         underscored: true,

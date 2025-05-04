@@ -1,3 +1,6 @@
+require('dotenv').config();
+
+// 2. Запускаем основное приложение (которое само подключится к БД и запустит сервер)
 require('./src/app');
 
 const app = require('./src/app'); // Запускаем основной app.js
@@ -22,3 +25,21 @@ server.on('error', (error) => {
     console.error('Failed to start server:', error);
     process.exit(1);
 });
+
+console.log('[Server] Загрузка dotenv...');
+// Сначала загружаем переменные окружения
+require('dotenv').config();
+console.log('[Server] dotenv загружен.');
+// Проверяем, загрузилась ли ПЕРЕД require('./src/app')
+console.log('[Server] Проверка DATABASE_URL до загрузки app:', process.env.DATABASE_URL ? 'УСТАНОВЛЕНА' : 'НЕ УСТАНОВЛЕНА!');
+
+console.log('[Server] Загрузка основного приложения app...');
+// Затем подключаем и запускаем основное приложение из папки src
+try {
+    require('./src/app');
+    console.log('[Server] Основное приложение app успешно загружено (require выполнен).');
+    // Примечание: Сообщение о запуске сервера (app.listen) будет выведено из app.js
+} catch (error) {
+    console.error('[Server] Ошибка при require("./src/app"):', error);
+    // Если ошибка здесь, проблема в синтаксисе или зависимостях внутри app.js или его импортов
+}

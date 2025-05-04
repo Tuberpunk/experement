@@ -120,6 +120,7 @@ const buildEventQueryOptions = (queryParams, userRole, userId) => {
 
 // POST /api/events
 exports.createEvent = async (req, res) => {
+    console.log('Received data for event creation:', JSON.stringify(req.body, null, 2));
     const {
         title, directionId, levelId, formatId, startDate, endDate,
         locationText, addressText, participantsInfo, participantCount,
@@ -137,9 +138,11 @@ exports.createEvent = async (req, res) => {
     // **ВАЛИДАЦИЯ ВВОДА ДОЛЖНА БЫТЬ ЗДЕСЬ**
     // (проверка обязательных полей, форматов, длины description и т.д.)
     if (!title || !description || !startDate || !responsibleFullName) {
+        console.error('Validation failed: Missing required fields.');
         return res.status(400).json({ message: 'Не заполнены обязательные поля (title, description, startDate, responsibleFullName)' });
     }
     if (description.length < 100) { // [16, 28, 38, 49]
+        console.error('Validation failed: Description too short.');
         return res.status(400).json({ message: 'Описание должно содержать не менее 100 символов' });
     }
 

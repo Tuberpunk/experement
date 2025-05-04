@@ -7,7 +7,7 @@ import {
     TextField, Button, Grid, Box, CircularProgress, Alert, Typography
 } from '@mui/material';
 import PropTypes from 'prop-types';
-import { createDocument } from '../api/documents'; // Убедитесь, что путь правильный
+import { createDocument } from '../api/documents';// Убедитесь, что путь правильный
 import FileUploader from './FileUploader'; // Наш компонент загрузчика
 
 // Схема валидации
