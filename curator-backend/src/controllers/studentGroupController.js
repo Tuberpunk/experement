@@ -33,7 +33,14 @@ exports.getAllGroups = async (req, res) => {
 
     const where = {}; // Начинаем с пустого объекта условий
     const include = [
-        { model: User, as: 'Curator', attributes: ['userId', 'fullName'] }
+        { model: User, as: 'Curator', attributes: ['userId', 'fullName'] },
+        {
+            model: Student,
+            as: 'Students',
+            attributes: ['studentId'], // Достаточно ID для подсчета, или можно [] если только для count
+            where: { isActive: true }, // Опционально: считать только активных
+            required: false // LEFT JOIN, чтобы группы без студентов тоже отображались
+        }
     ];
 
     const currentUser = req.user;

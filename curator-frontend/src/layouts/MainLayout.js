@@ -1,5 +1,5 @@
 // Полный путь: src/layouts/MainLayout.js
-import React from 'react';
+import React, { useState } from 'react'; // Добавлен useState
 // Хуки и компоненты для роутинга
 import { Outlet, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 // Компоненты Material UI
@@ -11,26 +11,35 @@ import {
     Container,
     Box,
     Chip,
-    IconButton, // Для возможного мобильного меню
-    Tooltip,    // Для подсказок к иконкам
-    Avatar      // Для отображения инициалов
+    IconButton,
+    Tooltip,
+    Avatar,
+    Menu, // Для выпадающего админского меню
+    MenuItem, // Для выпадающего админского меню
+    Drawer, // Для мобильного меню
+    List, // Для мобильного меню
+    ListItemButton, // Для мобильного меню
+    ListItemIcon, // Для иконок в меню
+    ListItemText, // Для текста в меню
+    Divider // Для разделителей в меню
 } from '@mui/material';
 // Иконки Material UI
-import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // Можно использовать для Avatar fallback
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
-import GroupsIcon from '@mui/icons-material/Groups'; // Группы
-import EventNoteIcon from '@mui/icons-material/EventNote'; // Мероприятия
-import DescriptionIcon from '@mui/icons-material/Description'; // Документы
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt'; // Студенты
-import LabelIcon from '@mui/icons-material/Label'; // Теги
-import AssessmentIcon from '@mui/icons-material/Assessment'; // Отчеты
-import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'; // Управление пользователями
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'; // Назначение события
-import LogoutIcon from '@mui/icons-material/Logout'; // Выход
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import GroupsIcon from '@mui/icons-material/Groups';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import DescriptionIcon from '@mui/icons-material/Description';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
+import LabelIcon from '@mui/icons-material/Label';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import LogoutIcon from '@mui/icons-material/Logout';
+import MenuIcon from '@mui/icons-material/Menu'; // Иконка-бургер
+import SettingsIcon from '@mui/icons-material/Settings'; // Для админского меню
 // Контекст аутентификации
-import { useAuth } from '../contexts/AuthContext'; // Убедитесь, что путь правильный
+import { useAuth } from '../contexts/AuthContext';
 
 // Вспомогательная функция для отображения роли
 const getRoleDisplay = (roleName) => {
@@ -49,165 +58,154 @@ const getInitials = (name = '') => {
   return name
     .split(' ')
     .map((n) => n[0])
-    .filter((n, i, arr) => n && (i === 0 || i === arr.length - 1)) // Берем первую и последнюю букву ФИО, если есть
+    .filter((n, i, arr) => n && (i === 0 || i === arr.length - 1))
     .join('')
     .toUpperCase();
 };
 
 
 function MainLayout() {
-    const { user, logout } = useAuth(); // Получаем пользователя и функцию выхода
+    const { user, logout } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation(); // Получаем текущий путь для подсветки активного меню
+    const location = useLocation();
 
-    // Обработчик выхода
-    const handleLogout = () => {
-        logout(); // Вызываем функцию выхода из контекста
-        navigate('/login'); // Перенаправляем на страницу входа
-    };
+    // Состояние для админского выпадающего меню (десктоп)
+    const [adminMenuAnchorEl, setAdminMenuAnchorEl] = useState(null);
+    const openAdminMenu = Boolean(adminMenuAnchorEl);
 
-    // Получаем текст и иконку для отображения роли
+    const handleAdminMenuOpen = (event) => setAdminMenuAnchorEl(event.currentTarget);
+    const handleAdminMenuClose = () => setAdminMenuAnchorEl(null);
+
+    // Состояние для мобильного выезжающего меню (Drawer)
+    const [mobileOpen, setMobileOpen] = useState(false);
+    const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
+
+    const handleLogout = () => { logout(); navigate('/login'); };
     const roleDisplay = user ? getRoleDisplay(user.role) : { label: '', icon: null };
-
-    // Функция для проверки, активен ли путь (для подсветки кнопок)
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
-    // Стиль для навигационных кнопок
     const navButtonStyle = (path) => ({
-        color: 'white',
-        mr: 1, // Отступ справа между кнопками
-        ml: 0.5, // Небольшой отступ слева
-        fontWeight: isActive(path) ? 'bold' : 'normal', // Жирный шрифт для активной
-        borderBottom: isActive(path) ? '2px solid white' : 'none', // Подчеркивание для активной
-        borderRadius: 0, // Прямые углы для эффекта вкладки
-        paddingBottom: '4px', // Отступ снизу для линии подчеркивания
-        '&:hover': { // Убираем стандартный фон при наведении
-            backgroundColor: 'rgba(255, 255, 255, 0.08)'
-        }
+        color: 'white', mr: 1, ml: 0.5,
+        fontWeight: isActive(path) ? 'bold' : 'normal',
+        borderBottom: isActive(path) ? '2px solid white' : 'none',
+        borderRadius: 0, paddingBottom: '4px',
+        '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)' }
     });
 
-    // --- Функция перехода в профиль ---
-     const goToProfile = () => {
-         navigate('/profile');
-     };
-     // --------------------------------
+    const goToProfile = () => navigate('/profile');
 
+    // --- Пункты меню для мобильного Drawer ---
+    const drawerItems = (
+        <Box onClick={handleDrawerToggle} sx={{ textAlign: 'left', width: 250 }} role="presentation">
+            <Typography variant="h6" sx={{ my: 2, ml: 2 }}>Меню</Typography>
+            <Divider />
+            <List>
+                <ListItemButton component={RouterLink} to="/events"> <ListItemIcon><EventNoteIcon /></ListItemIcon> <ListItemText primary="Мероприятия" /> </ListItemButton>
+                <ListItemButton component={RouterLink} to="/groups"> <ListItemIcon><GroupsIcon /></ListItemIcon> <ListItemText primary="Группы" /> </ListItemButton>
+                <ListItemButton component={RouterLink} to="/documents"> <ListItemIcon><DescriptionIcon /></ListItemIcon> <ListItemText primary="Документы" /> </ListItemButton>
+                <ListItemButton component={RouterLink} to="/students"> <ListItemIcon><PeopleAltIcon /></ListItemIcon> <ListItemText primary="Студенты" /> </ListItemButton>
+                {(user?.role === 'curator' || user?.role === 'administrator') && (
+                    <ListItemButton component={RouterLink} to="/curator-reports"> <ListItemIcon><AssessmentIcon /></ListItemIcon> <ListItemText primary={user?.role === 'administrator' ? 'Отчеты кураторов' : 'Мои Отчеты'} /> </ListItemButton>
+                )}
+                {/* Админские пункты в мобильном меню */}
+                {user?.role === 'administrator' && (
+                    <>
+                        <Divider sx={{ my: 1 }}><Chip label="Админ" size="small"/></Divider>
+                        <ListItemButton component={RouterLink} to="/admin/users"> <ListItemIcon><ManageAccountsIcon /></ListItemIcon> <ListItemText primary="Пользователи" /> </ListItemButton>
+                        <ListItemButton component={RouterLink} to="/admin/tags"> <ListItemIcon><LabelIcon /></ListItemIcon> <ListItemText primary="Теги студентов" /> </ListItemButton>
+                        <ListItemButton component={RouterLink} to="/admin/assign-event"> <ListItemIcon><AssignmentIndIcon /></ListItemIcon> <ListItemText primary="Назначить событие" /> </ListItemButton>
+                    </>
+                )}
+            </List>
+        </Box>
+    );
+    // ------------------------------------
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-            {/* Верхняя панель */}
             <AppBar position="static">
                 <Toolbar>
-                    {/* Название/Логотип */}
-                    <Typography
-                        variant="h6"
-                        component={RouterLink} // Делаем название ссылкой
-                        to="/events" // Ссылка на главную (мероприятия)
-                        sx={{
-                            flexGrow: { xs: 1, md: 0 }, // Растягиваем на мобильных, фиксируем на больших
-                            mr: { md: 3 },
-                            textDecoration: 'none',
-                            color: 'inherit'
-                        }}
+                    {/* Иконка-бургер для мобильных */}
+                    <IconButton
+                        color="inherit"
+                        aria-label="open drawer"
+                        edge="start"
+                        onClick={handleDrawerToggle}
+                        sx={{ mr: 2, display: { md: 'none' } }} // Показываем только на < md
                     >
+                        <MenuIcon />
+                    </IconButton>
+
+                    {/* Название/Логотип */}
+                    <Typography variant="h6" component={RouterLink} to="/events" sx={{ flexGrow: { xs: 1, md: 0 }, mr: { md: 2 }, textDecoration: 'none', color: 'inherit' }}>
                         Кабинет Куратора
                     </Typography>
 
-                    {/* Основная навигация (скрывается на маленьких экранах) */}
+                    {/* Десктопная навигация */}
                      <Box sx={{ display: { xs: 'none', md: 'flex' }, flexGrow: 1 }}>
-                        <Button component={RouterLink} to="/events" startIcon={<EventNoteIcon />} sx={navButtonStyle('/events')}>
-                            Мероприятия
-                        </Button>
-                        <Button component={RouterLink} to="/groups" startIcon={<GroupsIcon />} sx={navButtonStyle('/groups')}>
-                             Группы
-                        </Button>
-                          <Button component={RouterLink} to="/documents" startIcon={<DescriptionIcon />} sx={navButtonStyle('/documents')}>
-                             Документы
-                        </Button>
-                          <Button component={RouterLink} to="/students" startIcon={<PeopleAltIcon />} sx={navButtonStyle('/students')}>
-                             Студенты
-                        </Button>
-                            <Button component={RouterLink} to="/calendar" startIcon={<CalendarMonthIcon />} sx={navButtonStyle('/calendar')}>
-                             Календарь
-                         </Button>
-                         {/* Ссылка на Отчеты */}
-                         {(user?.role === 'curator' || user?.role === 'administrator') && (
-                             <Button component={RouterLink} to="/curator-reports" startIcon={<AssessmentIcon />} sx={navButtonStyle('/curator-reports')}>
-                                 {user?.role === 'administrator' ? 'Отчеты кураторов' : 'Мои Отчеты'}
-                             </Button>
+                        <Button component={RouterLink} to="/events" startIcon={<EventNoteIcon />} sx={navButtonStyle('/events')}> Мероприятия </Button>
+                        <Button component={RouterLink} to="/groups" startIcon={<GroupsIcon />} sx={navButtonStyle('/groups')}> Группы </Button>
+                        <Button component={RouterLink} to="/documents" startIcon={<DescriptionIcon />} sx={navButtonStyle('/documents')}> Документы </Button>
+                        <Button component={RouterLink} to="/students" startIcon={<PeopleAltIcon />} sx={navButtonStyle('/students')}> Студенты </Button>
+                        {(user?.role === 'curator' || user?.role === 'administrator') && (
+                             <Button component={RouterLink} to="/curator-reports" startIcon={<AssessmentIcon />} sx={navButtonStyle('/curator-reports')}> {user?.role === 'administrator' ? 'Отчеты кураторов' : 'Мои Отчеты'} </Button>
                          )}
-                         {/* Ссылки для админа */}
+                         {/* Кнопка для админского выпадающего меню */}
                          {user?.role === 'administrator' && (
-                            <> {/* Используем фрагмент для группировки админских кнопок */}
-                                <Button component={RouterLink} to="/admin/tags" startIcon={<LabelIcon />} sx={navButtonStyle('/admin/tags')}>
-                                     Теги
-                                </Button>
-                                <Button component={RouterLink} to="/admin/users" startIcon={<ManageAccountsIcon />} sx={navButtonStyle('/admin/users')}>
-                                     Пользователи
-                                </Button>
-                                <Button component={RouterLink} to="/admin/assign-event" startIcon={<AssignmentIndIcon />} sx={navButtonStyle('/admin/assign-event')}>
-                                      Назначить событие
-                                 </Button>
-                             </>
+                            <Button id="admin-menu-button" aria-controls={openAdminMenu ? 'admin-menu' : undefined} aria-haspopup="true" aria-expanded={openAdminMenu ? 'true' : undefined} onClick={handleAdminMenuOpen} startIcon={<SettingsIcon />} sx={navButtonStyle('/admin')}>
+                                 Администрирование
+                            </Button>
                          )}
                      </Box>
 
-                     {/* TODO: Добавить кнопку-бургер и выпадающее меню для мобильной версии */}
-                     {/* <IconButton sx={{ display: { xs: 'flex', md: 'none' }, ml: 'auto' }} ... /> */}
-
-                    {/* Информация о пользователе и роли (прижимаем к правому краю, делаем кликабельной) */}
+                    {/* Информация о пользователе и роли */}
                     {user && (
                         <Tooltip title="Перейти в профиль">
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    ml: { xs: 0, md: 'auto' }, // ml:auto только на >md
-                                    cursor: 'pointer', // Показываем, что можно кликнуть
-                                    p: 0.5, // Небольшие отступы для области клика
-                                    borderRadius: 1,
-                                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)'} // Эффект при наведении
-                                }}
-                                onClick={goToProfile} // <-- Обработчик клика для перехода в профиль
-                            >
-                                {/* Аватар с инициалами */}
-                                <Avatar sx={{ width: 32, height: 32, mr: 1, fontSize: '0.875rem', bgcolor: 'secondary.light' }}>
-                                     {getInitials(user.fullName || '') || <AccountCircleIcon fontSize='small'/>} {/* Fallback иконка */}
-                                </Avatar>
-                                {/* Имя пользователя (скрывается на малых экранах) */}
-                                <Typography sx={{ mr: 1.5, display: { xs: 'none', lg: 'block' } }}>
-                                    {user.fullName || user.email}
-                                </Typography>
-                                {/* Роль */}
-                                <Chip
-                                    icon={roleDisplay.icon}
-                                    label={roleDisplay.label}
-                                    size="small"
-                                    color={user.role === 'administrator' ? 'warning' : 'info'}
-                                    variant="filled"
-                                    sx={{ mr: 1 }}
-                                />
+                            <Box sx={{ display: 'flex', alignItems: 'center', ml: { xs: 0, md: 'auto' }, cursor: 'pointer', p: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)'} }} onClick={goToProfile} >
+                                <Avatar sx={{ width: 32, height: 32, mr: 1, fontSize: '0.875rem', bgcolor: 'secondary.light' }}> {getInitials(user.fullName || '') || <AccountCircleIcon fontSize='small'/>} </Avatar>
+                                <Typography sx={{ mr: 1.5, display: { xs: 'none', lg: 'block' } }}> {user.fullName || user.email} </Typography>
+                                <Chip icon={roleDisplay.icon} label={roleDisplay.label} size="small" color={user.role === 'administrator' ? 'warning' : 'info'} variant="filled" sx={{ mr: 1 }} />
                             </Box>
                         </Tooltip>
                     )}
-                     {/* Кнопка Выйти (Иконка) */}
                     <Tooltip title="Выйти">
-                        <IconButton color="inherit" onClick={handleLogout} sx={{ ml: 1 }}> {/* Небольшой отступ слева */}
+                        <IconButton color="inherit" onClick={handleLogout} sx={{ ml: user ? 1 : 'auto' }}> {/* ml:auto если юзера нет, чтобы прижать к правому краю */}
                             <LogoutIcon />
                         </IconButton>
                      </Tooltip>
                 </Toolbar>
             </AppBar>
 
+            {/* Мобильное выезжающее меню (Drawer) */}
+            <Box component="nav">
+                <Drawer
+                    variant="temporary"
+                    open={mobileOpen}
+                    onClose={handleDrawerToggle}
+                    ModalProps={{ keepMounted: true }}
+                    sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 250 }, }}
+                >
+                    {drawerItems}
+                </Drawer>
+            </Box>
+
+            {/* Админское выпадающее меню (для десктопа) */}
+            <Menu id="admin-menu" anchorEl={adminMenuAnchorEl} open={openAdminMenu} onClose={handleAdminMenuClose} MenuListProps={{ 'aria-labelledby': 'admin-menu-button' }} PaperProps={{ style: { minWidth: '200px' } }}>
+                <MenuItem component={RouterLink} to="/admin/users" onClick={handleAdminMenuClose}> <ListItemIcon><ManageAccountsIcon fontSize="small" /></ListItemIcon> <ListItemText>Пользователи</ListItemText> </MenuItem>
+                <MenuItem component={RouterLink} to="/admin/tags" onClick={handleAdminMenuClose}> <ListItemIcon><LabelIcon fontSize="small" /></ListItemIcon> <ListItemText>Теги студентов</ListItemText> </MenuItem>
+                <MenuItem component={RouterLink} to="/admin/assign-event" onClick={handleAdminMenuClose}> <ListItemIcon><AssignmentIndIcon fontSize="small" /></ListItemIcon> <ListItemText>Назначить событие</ListItemText> </MenuItem>
+                {/* TODO: Добавить другие админские пункты */}
+            </Menu>
+
             {/* Основной контент страницы */}
-            <Container component="main" sx={{ flexGrow: 1, py: { xs: 2, sm: 3 } }}> {/* Адаптивные отступы */}
-                <Outlet /> {/* Сюда будет рендериться содержимое дочерних роутов */}
+            <Container component="main" sx={{ flexGrow: 1, py: { xs: 2, sm: 3 } }}>
+                <Outlet />
             </Container>
 
             {/* Подвал */}
             <Box component="footer" sx={{ bgcolor: 'background.paper', p: 2, mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
                  <Typography variant="body2" color="text.secondary" align="center">
-                   © {new Date().getFullYear()} Все права защищены.
+                   © {new Date().getFullYear()} Ваш Университет. Все права защищены.
                  </Typography>
             </Box>
         </Box>
