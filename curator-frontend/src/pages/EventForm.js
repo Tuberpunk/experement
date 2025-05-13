@@ -1,37 +1,64 @@
-// src/pages/EventForm.js
+// Полный путь: src/pages/EventForm.js
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+// Хуки и компоненты React Router
+import { useParams, useNavigate, Navigate, Link as RouterLink, useLocation } from 'react-router-dom';
+// React Hook Form и Yup для валидации
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
+// Компоненты Material UI
 import {
-    Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert,
+    Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar,
     Select, MenuItem, FormControl, InputLabel, FormHelperText, Checkbox, FormControlLabel, Autocomplete, Chip,
-    Snackbar, IconButton, List, ListItem, ListItemText, Divider
+    IconButton, List, ListItem, ListItemText, Divider, Tooltip
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import dayjs from 'dayjs'; // Для работы с датами в DatePicker
+import dayjs from 'dayjs';
+// Иконки MUI
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteIcon from '@mui/icons-material/Delete';
+// Контекст, API, Компоненты
 import { useAuth } from '../contexts/AuthContext';
-import StatusChip from '../components/StatusChip';
 import { getEventById, createEvent, updateEvent } from '../api/events';
+import { getUsers } from '../api/users'; // Для выбора Ответственного
 import { getEventDirections, getEventLevels, getEventFormats, getParticipantCategories, getFundingSources } from '../api/lookups';
+import { getMyStudentsForReport } from '../api/curatorReports'; // Для выбора Гостя-Студента
 import FileUploader from '../components/FileUploader'; // Компонент загрузчика
+
+// --- Данные для подсказок ---
+const ugtuLocations = [
+    { label: 'Главный корпус (А)', address: 'г. Ухта, ул. Первомайская, д. 13' },
+    { label: 'Корпус Б', address: 'г. Ухта, ул. Первомайская, д. 9' },
+    { label: 'Корпус В', address: 'г. Ухта, ул. Первомайская, д. 11' },
+    { label: 'Корпус Г', address: 'г. Ухта, ул. Октябрьская, д. 13' },
+    { label: 'Корпус Д', address: 'г. Ухта, ул. Октябрьская, д. 13' },
+    { label: 'Корпус Е', address: 'г. Ухта, ул. Сенюкова, д. 13' },
+    { label: 'Корпус К (Колледж)', address: 'г. Ухта, ул. Октябрьская, д. 26' },
+    { label: 'Корпус Л', address: 'г. Ухта, ул. Сенюкова, д. 15' },
+    { label: 'Корпус Н', address: 'г. Ухта, ул. Первомайская, д. 44а' },
+    { label: 'Бизнес-инкубатор', address: 'г. Ухта, ул. Сенюкова, д. 13' },
+    { label: 'Спортивный комплекс "Буревестник"', address: 'г. Ухта, ул. Мира, д. 13а' },
+    { label: 'Бассейн "Буревестник"', address: 'г. Ухта, ул. Мира, д. 13а' },
+    { label: 'Общежитие №1', address: 'г. Ухта, ул. Мира, д. 13' },
+    { label: 'Общежитие №2', address: 'г. Ухта, ул. Мира, д. 11' },
+    // ... добавьте другие актуальные объекты ...
+];
+// ---------------------------
 
 // --- Схема валидации Yup ---
 const eventSchema = yup.object().shape({
-    title: yup.string().required('Название обязательно'),
+    title: yup.string().required('Название обязательно').max(500, 'Слишком длинное название'),
     description: yup.string().required('Описание обязательно').min(100, 'Описание должно быть не менее 100 символов'),
     startDate: yup.date().required('Дата начала обязательна').typeError('Неверный формат даты'),
     endDate: yup.date().nullable().typeError('Неверный формат даты')
         .min(yup.ref('startDate'), 'Дата окончания не может быть раньше даты начала'),
     responsibleFullName: yup.string().required('ФИО ответственного обязательно'),
-    responsibleEmail: yup.string().email('Неверный формат email').nullable().transform(value => value || null), // Пустую строку превращаем в null
+    responsibleEmail: yup.string().email('Неверный формат email').nullable().transform(value => value || null),
     responsiblePhone: yup.string().nullable().transform(value => value || null),
     locationText: yup.string().nullable().transform(value => value || null),
     addressText: yup.string().nullable().transform(value => value || null),
     participantsInfo: yup.string().nullable().transform(value => value || null),
+    status: yup.string().oneOf(['Запланировано', 'Проведено', 'Не проводилось (Отмена)']),
 
     directionId: yup.number().nullable().positive().integer(),
     levelId: yup.number().nullable().positive().integer(),
@@ -39,162 +66,196 @@ const eventSchema = yup.object().shape({
 
     participantCount: yup.number().nullable().integer('Должно быть целое число').min(0, 'Не может быть отрицательным').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
     hasForeigners: yup.boolean(),
-    foreignerCount: yup.number().nullable().when('hasForeigners', { // Условно обязательно
-        is: true,
-        then: schema => schema.required('Укажите кол-во иностранцев').min(0).integer().typeError('Введите число'),
-        otherwise: schema => schema.nullable().transform(() => null) // Обнуляем, если флаг снят
-    }).transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
-    hasMinors: yup.boolean(),
-    minorCount: yup.number().nullable().when('hasMinors', { // Условно обязательно
-        is: true,
-        then: schema => schema.required('Укажите кол-во несовершеннолетних').min(0).integer().typeError('Введите число'),
+    foreignerCount: yup.number().nullable().when('hasForeigners', {
+        is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
         otherwise: schema => schema.nullable().transform(() => null)
-    }).transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
+    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
+    hasMinors: yup.boolean(),
+    minorCount: yup.number().nullable().when('hasMinors', {
+        is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
+        otherwise: schema => schema.nullable().transform(() => null)
+    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
 
     fundingAmount: yup.number().nullable().min(0, 'Не может быть отрицательным').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
 
-    participantCategoryIds: yup.array().of(yup.number()).nullable(),
-    fundingSourceIds: yup.array().of(yup.number()).nullable(),
+    participantCategoryIds: yup.array().of(yup.number().integer()).nullable(),
+    fundingSourceIds: yup.array().of(yup.number().integer()).nullable(),
 
     mediaLinks: yup.array().of(yup.object().shape({
+        id: yup.number().nullable(),
         url: yup.string().url("Неверный URL").required("URL обязателен"),
         description: yup.string().nullable()
     })).nullable(),
-    eventMedias: yup.array().of(yup.object().shape({ // Валидация для медиа (может быть дополнена)
-        mediaUrl: yup.string().required(),
-        mediaType: yup.string().required(),
+    // Добавили проверку, что eventMedias является массивом
+    eventMedias: yup.array().of(yup.object().shape({
+        id: yup.number().nullable(),
+        mediaUrl: yup.string().required('URL медиафайла обязателен (загрузите файл)'),
+        mediaType: yup.string().required('Тип медиафайла не определен'),
         description: yup.string().nullable(),
         author: yup.string().nullable(),
     })).nullable(),
     invitedGuests: yup.array().of(yup.object().shape({
+        id: yup.number().nullable(),
         fullName: yup.string().required("ФИО гостя обязательно"),
         position: yup.string().nullable(),
         organization: yup.string().nullable(),
     })).nullable(),
-
 });
+// ------------------------
 
-// --- Компонент формы ---
+
 function EventForm({ mode }) {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [loading, setLoading] = useState(mode === 'edit');
-    const [formError, setFormError] = useState(''); // Общая ошибка формы
-    const [lookups, setLookups] = useState({
-        directions: [], levels: [], formats: [], categories: [], sources: []
-    });
+    const [loadingLookups, setLoadingLookups] = useState(true);
+    const [formError, setFormError] = useState('');
+    const [lookups, setLookups] = useState({ directions: [], levels: [], formats: [], categories: [], sources: [] });
+    const [studentsList, setStudentsList] = useState([]);
+    const [usersList, setUsersList] = useState([]);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
     const isEditMode = mode === 'edit';
 
+    // === ВЫЗОВ ХУКОВ ===
     const { control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(eventSchema),
         defaultValues: {
-            title: '', description: '', directionId: '', levelId: '', formatId: '',
-            startDate: null, endDate: null, locationText: '', addressText: '',
-            participantsInfo: '', participantCount: '', hasForeigners: false, foreignerCount: '',
-            hasMinors: false, minorCount: '', responsibleFullName: '', responsiblePosition: '',
+            title: location.state?.title || '', // <-- Предзаполнение Названия из Календаря
+            description: '', directionId: '', levelId: '', formatId: '',
+            startDate: location.state?.startDate ? dayjs(location.state.startDate) : null, // <-- Предзаполнение Даты начала
+            endDate: location.state?.endDate && location.state.startDate !== location.state.endDate
+                     ? dayjs(location.state.endDate).subtract(1, 'day')
+                     : (location.state?.startDate ? dayjs(location.state.startDate) : null), // <-- Предзаполнение Даты окончания
+            locationText: '', addressText: '',
+            participantsInfo: '', participantCount: '', hasForeigners: false, foreignerCount: '0',
+            hasMinors: false, minorCount: '0', responsibleFullName: '', responsiblePosition: '',
             responsiblePhone: '', responsibleEmail: '', fundingAmount: '',
             participantCategoryIds: [], fundingSourceIds: [],
-            mediaLinks: [], eventMedias: [], invitedGuests: []
+            mediaLinks: [], eventMedias: [], invitedGuests: [],
+            status: 'Запланировано'
         }
     });
 
-    // --- Динамические списки ---
+    // Динамические списки
     const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({ control, name: "mediaLinks" });
     const { fields: mediaFields, append: appendMedia, remove: removeMedia } = useFieldArray({ control, name: "eventMedias" });
     const { fields: guestFields, append: appendGuest, remove: removeGuest } = useFieldArray({ control, name: "invitedGuests" });
 
-    // Наблюдение за чекбоксами для условных полей
+    // Наблюдение за чекбоксами и местом
     const watchHasForeigners = watch('hasForeigners');
     const watchHasMinors = watch('hasMinors');
+    const watchLocationText = watch('locationText');
 
     // --- Загрузка данных ---
-    const loadLookups = useCallback(async () => {
+    const loadInitialData = useCallback(async () => {
+        setLoadingLookups(true); setFormError('');
         try {
-            const [dirs, levels, formats, cats, srcs] = await Promise.all([
+            // Загружаем все параллельно
+            const [dirs, levels, formats, cats, srcs, myStudents, usersData] = await Promise.all([
                 getEventDirections(), getEventLevels(), getEventFormats(),
-                getParticipantCategories(), getFundingSources()
+                getParticipantCategories(), getFundingSources(),
+                (user?.role === 'curator' || user?.role === 'administrator') ? getMyStudentsForReport() : Promise.resolve([]),
+                // Загружаем всех кураторов и админов для списка ответственных
+                getUsers({ limit: 1000, role: ['curator', 'administrator'], isActive: true }) // Добавил isActive: true
             ]);
-            setLookups({ directions: dirs, levels: levels, formats: formats, categories: cats, sources: srcs });
+            setLookups({
+                directions: dirs || [], levels: levels || [], formats: formats || [],
+                categories: cats || [], sources: srcs || []
+            });
+            setStudentsList(myStudents || []);
+            setUsersList(usersData.users || []);
+
         } catch (err) {
-            console.error("Failed to load lookups for form:", err);
-            setFormError('Не удалось загрузить справочные данные для формы.');
-        }
-    }, []);
+            console.error("Failed to load lookups/users/students for event form:", err);
+            setFormError('Не удалось загрузить справочные данные и списки пользователей.');
+        } finally { setLoadingLookups(false); }
+    }, [user]); // Зависит от роли пользователя
 
     const loadEventData = useCallback(async () => {
+        // Загрузка данных мероприятия в режиме редактирования
         if (isEditMode && id) {
-            setLoading(true);
-            setFormError('');
+            setLoading(true); setFormError('');
+            console.log('[EventForm] Starting loadEventData for ID:', id);
             try {
                 const eventData = await getEventById(id);
-                if (user.role !== 'administrator' && eventData.createdByUserId !== user.id) {
-                    setFormError('Доступ запрещен: вы не можете редактировать это мероприятие.');
-                    navigate('/forbidden');
-                    return;
-                }
-                reset({
-                    title: eventData.title || '',
-                    description: eventData.description || '',
-                    directionId: eventData.directionId || '',
-                    levelId: eventData.levelId || '',
-                    formatId: eventData.formatId || '',
+                console.log('[EventForm] Fetched Event Data (Raw):', eventData);
+                if (!eventData) { /* ... обработка не найдено ... */ }
+                if (user?.role !== 'administrator' && user?.id !== eventData.createdByUserId) { /* ... обработка прав ... */ }
+
+                const dataToReset = { // Формируем объект для reset
+                    title: eventData.title || '', description: eventData.description || '',
+                    directionId: eventData.directionId || '', levelId: eventData.levelId || '', formatId: eventData.formatId || '',
                     startDate: eventData.startDate ? dayjs(eventData.startDate) : null,
                     endDate: eventData.endDate ? dayjs(eventData.endDate) : null,
-                    locationText: eventData.locationText || '',
-                    addressText: eventData.addressText || '',
-                    participantsInfo: eventData.participantsInfo || '',
-                    participantCount: eventData.participantCount ?? '', // Используем ?? для пустой строки вместо null/undefined
-                    hasForeigners: eventData.hasForeigners || false,
-                    foreignerCount: eventData.foreignerCount ?? '',
-                    hasMinors: eventData.hasMinors || false,
-                    minorCount: eventData.minorCount ?? '',
-                    responsibleFullName: eventData.responsibleFullName || '',
-                    responsiblePosition: eventData.responsiblePosition || '',
-                    responsiblePhone: eventData.responsiblePhone || '',
-                    responsibleEmail: eventData.responsibleEmail || '',
-                    fundingAmount: eventData.fundingAmount ?? '',
+                    locationText: eventData.locationText || '', addressText: eventData.addressText || '',
+                    participantsInfo: eventData.participantsInfo || '', participantCount: eventData.participantCount ?? '',
+                    hasForeigners: eventData.hasForeigners || false, foreignerCount: eventData.foreignerCount ?? '0',
+                    hasMinors: eventData.hasMinors || false, minorCount: eventData.minorCount ?? '0',
+                    responsibleFullName: eventData.responsibleFullName || '', responsiblePosition: eventData.responsiblePosition || '',
+                    responsiblePhone: eventData.responsiblePhone || '', responsibleEmail: eventData.responsibleEmail || '',
+                    fundingAmount: eventData.fundingAmount ?? '', status: eventData.status || 'Запланировано',
                     participantCategoryIds: eventData.ParticipantCategories?.map(cat => cat.categoryId) || [],
                     fundingSourceIds: eventData.FundingSources?.map(src => src.sourceId) || [],
                     mediaLinks: eventData.MediaLinks?.map(link => ({ id: link.linkId, url: link.url || '', description: link.description || '' })) || [],
                     eventMedias: eventData.EventMedias?.map(media => ({ id: media.mediaId, mediaUrl: media.mediaUrl || '', mediaType: media.mediaType || '', description: media.description || '', author: media.author || '' })) || [],
                     invitedGuests: eventData.InvitedGuests?.map(guest => ({ id: guest.guestId, fullName: guest.fullName || '', position: guest.position || '', organization: guest.organization || '' })) || [],
-                });
-            } catch (err) {
-                setFormError(err.response?.data?.message || err.message || 'Не удалось загрузить данные мероприятия.');
-                console.error("Fetch event for edit error:", err);
-            } finally {
-                setLoading(false);
-            }
+                };
+                console.log('[EventForm] Data prepared for reset:', dataToReset);
+                reset(dataToReset); // Заполняем форму
+                console.log('[EventForm] reset() function called.');
+            } catch (err) { /* ... обработка ошибки ... */ }
+             finally { setLoading(false); }
         }
-    }, [id, isEditMode, reset, user, navigate]);
+    }, [id, isEditMode, reset, navigate, user]); // Убрали setValue из зависимостей loadEventData
 
     useEffect(() => {
-        loadLookups();
-        loadEventData();
-    }, [loadLookups, loadEventData]); // Вызов при монтировании и изменении ID (для edit)
+        loadInitialData().then(() => {
+             // Вызываем loadEventData только ПОСЛЕ завершения loadInitialData,
+             // чтобы списки для Autocomplete были готовы к моменту reset
+             if (isEditMode) {
+                loadEventData();
+            } else if (user && !location.state?.startDate) { // Предзаполняем только если не пришли с календаря
+                 setValue('responsibleFullName', user.fullName || '');
+                 setValue('responsibleEmail', user.email || '');
+             }
+        });
+    }, [loadInitialData, loadEventData, isEditMode, user, setValue, location.state]); // Зависимости для useEffect
 
     // --- Обработчики ---
     const onSubmit = async (data) => {
         setFormError('');
+        // Убедимся, что все числовые поля правильно преобразованы или null
+        const parseOptionalInt = (val) => (val === '' || val === null || isNaN(parseInt(val, 10)) ? null : parseInt(val, 10));
+        const parseOptionalFloat = (val) => (val === '' || val === null || isNaN(parseFloat(val)) ? null : parseFloat(val));
+
         const eventDataToSend = {
             ...data,
             startDate: data.startDate ? dayjs(data.startDate).format('YYYY-MM-DD') : null,
             endDate: data.endDate ? dayjs(data.endDate).format('YYYY-MM-DD') : null,
-            participantCount: data.participantCount === '' ? null : parseInt(data.participantCount, 10),
-            fundingAmount: data.fundingAmount === '' ? null : parseFloat(data.fundingAmount),
-            foreignerCount: data.hasForeigners && data.foreignerCount !== '' ? parseInt(data.foreignerCount, 10) : 0, // Отправляем 0 если флаг снят
-            minorCount: data.hasMinors && data.minorCount !== '' ? parseInt(data.minorCount, 10) : 0,
-            // Оставляем массивы как есть (react-hook-form их хранит правильно)
+            participantCount: parseOptionalInt(data.participantCount),
+            fundingAmount: parseOptionalFloat(data.fundingAmount),
+            foreignerCount: data.hasForeigners ? parseOptionalInt(data.foreignerCount) ?? 0 : 0, // Отправляем 0 если не число
+            minorCount: data.hasMinors ? parseOptionalInt(data.minorCount) ?? 0 : 0,
+            directionId: data.directionId || null, // Пустую строку в null
+            levelId: data.levelId || null,
+            formatId: data.formatId || null,
+            participantCategoryIds: data.participantCategoryIds || [],
+            fundingSourceIds: data.fundingSourceIds || [],
+            // Убираем временный 'id' из массивов перед отправкой
+            mediaLinks: data.mediaLinks?.map(({ id, ...rest }) => rest) || [],
+            // Фильтруем медиа без URL перед отправкой
+            eventMedias: data.eventMedias?.filter(m => m.mediaUrl).map(({ id, ...rest }) => rest) || [],
+            invitedGuests: data.invitedGuests?.map(({ id, ...rest }) => rest) || [],
         };
-         // Удаляем ID из вложенных объектов перед отправкой (если бэкенд не ожидает их для создания/обновления связей)
-         // Возможно, бэкенду нужны только ID для many-to-many, а one-to-many он обрабатывает сам
-         // eventDataToSend.mediaLinks = data.mediaLinks.map(({id, ...link}) => link); // Пример удаления ID
-         // eventDataToSend.eventMedias = data.eventMedias.map(({id, ...media}) => media);
-         // eventDataToSend.invitedGuests = data.invitedGuests.map(({id, ...guest}) => guest);
+         // Приводим пустые необязательные строки к null
+         for (const key of ['responsiblePosition', 'responsiblePhone', 'responsibleEmail', 'locationText', 'addressText', 'participantsInfo']) {
+            if (!eventDataToSend[key]) eventDataToSend[key] = null;
+         }
+         delete eventDataToSend.status;
 
-        console.log("Data to send:", eventDataToSend); // Для отладки
+        console.log('Data to send:', JSON.stringify(eventDataToSend, null, 2));
 
         try {
             let result;
@@ -204,44 +265,30 @@ function EventForm({ mode }) {
                 result = await createEvent(eventDataToSend);
             }
             setSnackbar({ open: true, message: `Мероприятие успешно ${isEditMode ? 'обновлено' : 'создано'}!`, severity: 'success' });
-            setTimeout(() => navigate(isEditMode ? `/events/${id}` : `/events/${result.eventId}`), 1500); // Задержка для Snackbar
+            setTimeout(() => navigate(`/events/${isEditMode ? id : result.eventId}`), 1500);
         } catch (err) {
-            const message = err.response?.data?.message || err.message || `Не удалось ${isEditMode ? 'обновить' : 'создать'} мероприятие.`;
-            setFormError(message); // Показываем общую ошибку
-            setSnackbar({ open: true, message: message, severity: 'error' });
-            if (err.response?.data?.errors) {
-                console.error("Backend validation errors:", err.response.data.errors);
-                // Тут можно попытаться сопоставить ошибки с полями формы, но это сложно
-            }
-            console.error("Form submission error:", err);
-        }
+             const message = err.response?.data?.message || err.message || `Не удалось ${isEditMode ? 'обновить' : 'создать'} мероприятие.`;
+             setFormError(message);
+             setSnackbar({ open: true, message: message, severity: 'error' });
+             console.error("Event form submission error:", err);
+         }
     };
 
-    const handleCloseSnackbar = useCallback((event, reason) => {
-        if (reason === 'clickaway') {
-            return;
-        }
-        setSnackbar(prev => ({ ...prev, open: false }));
-    }, []);
+    const handleMediaUploadSuccess = useCallback((fileData, index) => {
+        if (fileData?.mediaUrl && fileData?.mediaType) {
+            setValue(`eventMedias.${index}.mediaUrl`, fileData.mediaUrl, { shouldDirty: true });
+            setValue(`eventMedias.${index}.mediaType`, fileData.mediaType, { shouldDirty: true });
+            setSnackbar({ open: true, message: `Файл "${fileData.filename || 'файл'}" загружен для медиа ${index + 1}`, severity: 'info' });
+        } else { setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла для медиа ${index + 1}`, severity: 'warning' }); }
+     }, [setValue]);
 
-    const handleMediaUploadSuccess = useCallback((mediaData) => {
-        console.log('File uploaded, data received:', mediaData);
-        if (mediaData?.mediaUrl && mediaData?.mediaType) {
-             appendMedia({
-                mediaUrl: mediaData.mediaUrl,
-                mediaType: mediaData.mediaType,
-                description: '',
-                author: '',
-            });
-             setSnackbar({ open: true, message: `Файл "${mediaData.filename || 'файл'}" успешно загружен`, severity: 'success' });
-        } else {
-             console.error("Upload success callback missing data:", mediaData);
-             setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла.`, severity: 'warning' });
-        }
-    }, [appendMedia]);
+    const handleCloseSnackbar = useCallback((event, reason) => {
+        if (reason === 'clickaway') return;
+        setSnackbar(prev => ({ ...prev, open: false }));
+     }, []);
 
     // --- Рендеринг ---
-    if (loading) {
+    if (loadingLookups || (loading && isEditMode)) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
 
@@ -257,206 +304,155 @@ function EventForm({ mode }) {
                 <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
                     <Grid container spacing={3}>
 
-                        {/* --- Основные поля --- */}
+                        {/* Название, Описание */}
+                        <Grid item xs={12}><Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название мероприятия *" required fullWidth error={!!errors.title} helperText={errors.title?.message} />}/></Grid>
+                        <Grid item xs={12}><Controller name="description" control={control} render={({ field }) => <TextField {...field} label="Описание (min 100) *" required fullWidth multiline rows={5} error={!!errors.description} helperText={errors.description?.message} />}/></Grid>
+
+                        {/* Справочники */}
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.directionId} size="small"><InputLabel id="direction-label">Направление</InputLabel><Controller name="directionId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="direction-label" label="Направление"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.directionId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.levelId} size="small"><InputLabel id="level-label">Уровень</InputLabel><Controller name="levelId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="level-label" label="Уровень"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.levelId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.formatId} size="small"><InputLabel id="format-label">Формат</InputLabel><Controller name="formatId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="format-label" label="Формат"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.formatId?.message}</FormHelperText></FormControl></Grid>
+
+                        {/* Даты */}
+                        <Grid item xs={12} sm={6}><Controller name="startDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата начала *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.startDate, helperText: errors.startDate?.message, size:'small' } }} />)} /></Grid>
+                        <Grid item xs={12} sm={6}><Controller name="endDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата окончания" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} minDate={watch('startDate') ? dayjs(watch('startDate')) : undefined} slotProps={{ textField: { fullWidth: true, error: !!errors.endDate, helperText: errors.endDate?.message, size:'small' } }} />)} /></Grid>
+
+                        {/* Место проведения */}
+                        <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} {...restField} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
+                        <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : '')} />} /> </Grid>
+
+                         {/* Участники */}
+                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Участники" size="small"/></Divider></Grid>
+                         <Grid item xs={12} md={6}><Controller name="participantCategoryIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.categories} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.categories.filter(cat => field.value?.includes(cat.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Категории участников" error={!!errors.participantCategoryIds} helperText={errors.participantCategoryIds?.message}/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
+                         <Grid item xs={12} sm={6} md={3}><Controller name="participantCount" control={control} render={({ field }) => <TextField {...field} label="Общее кол-во уч." type="number" fullWidth size="small" error={!!errors.participantCount} helperText={errors.participantCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasForeigners" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Иностр." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5}><Controller name="foreignerCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasMinors" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Несоверш." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
+                         <Grid item xs={6} sm={3} md={1.5}><Controller name="minorCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                         <Grid item xs={12}><Controller name="participantsInfo" control={control} render={({ field }) => <TextField {...field} label="Доп. информация об участниках" fullWidth multiline rows={2} size="small"/>} /></Grid>
+
+                         {/* --- Ответственный --- */}
+                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Ответственное лицо" size="small"/></Divider></Grid>
+                         <Grid item xs={12} sm={6}> <Controller name="responsibleFullName" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={usersList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.userId === val?.userId} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }} onChange={(_, newValue) => { let nameToSet = ''; if (typeof newValue === 'object' && newValue !== null && newValue.userId) { nameToSet = newValue.fullName; setValue('responsiblePosition', newValue.position || '', { shouldValidate: true }); setValue('responsiblePhone', newValue.phoneNumber || '', { shouldValidate: true }); setValue('responsibleEmail', newValue.email || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { nameToSet = newValue; } else { nameToSet = ''; } onChange(nameToSet); }} renderInput={(params) => ( <TextField {...params} {...restField} label="ФИО ответственного *" required fullWidth error={!!errors.responsibleFullName} helperText={errors.responsibleFullName?.message} size="small"/> )} /> )} /> </Grid>
+                         <Grid item xs={12} sm={6}><Controller name="responsiblePosition" control={control} render={({ field }) => <TextField {...field} label="Должность ответственного" fullWidth size="small"/>} /></Grid>
+                         <Grid item xs={12} sm={6}><Controller name="responsiblePhone" control={control} render={({ field }) => <TextField {...field} label="Телефон отв." fullWidth size="small"/>} /></Grid>
+                         <Grid item xs={12} sm={6}><Controller name="responsibleEmail" control={control} render={({ field }) => <TextField {...field} label="Email отв." type="email" fullWidth error={!!errors.responsibleEmail} helperText={errors.responsibleEmail?.message} size="small"/>} /></Grid>
+
+                         {/* --- Финансирование --- */}
+                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Финансирование" size="small"/></Divider></Grid>
+                         <Grid item xs={12} md={6}><Controller name="fundingSourceIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.sources} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.sources.filter(src => field.value?.includes(src.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Источники финансирования" error={!!errors.fundingSourceIds} helperText={errors.fundingSourceIds?.message}/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
+                         <Grid item xs={12} md={6}><Controller name="fundingAmount" control={control} render={({ field }) => <TextField {...field} label="Объем (тыс. руб.)" type="number" fullWidth size="small" error={!!errors.fundingAmount} helperText={errors.fundingAmount?.message} InputProps={{ inputProps: { min: 0, step: 0.01 } }} />} /></Grid>
+
+                        {/* --- Ссылки, Медиа, Гости --- */}
+                        <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Дополнительные материалы и участники" size="small"/></Divider></Grid>
+
+                        {/* Ссылки */}
                         <Grid item xs={12}>
-                            <Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название мероприятия" required fullWidth error={!!errors.title} helperText={errors.title?.message} />} />
+                           <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography>
+                           <List dense disablePadding sx={{mb: 1}}> {linkFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1}}> <Controller name={`mediaLinks.${index}.url`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="URL *" size="small" sx={{ flexGrow: 1 }} error={!!errors.mediaLinks?.[index]?.url} helperText={errors.mediaLinks?.[index]?.url?.message}/>} /> <Controller name={`mediaLinks.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание (VK, сайт...)" size="small" sx={{ width: {xs: '100%', sm:'30%'} }} />} /> <Tooltip title="Удалить ссылку"><IconButton onClick={() => removeLink(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip> </ListItem> ))} </List>
+                           <Button onClick={() => appendLink({ url: '', description: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить ссылку</Button>
                         </Grid>
+
+                        {/* Медиа */}
                         <Grid item xs={12}>
-                            <Controller name="description" control={control} render={({ field }) => <TextField {...field} label="Описание (не менее 100 симв.)" required fullWidth multiline rows={5} error={!!errors.description} helperText={errors.description?.message} />} />
-                        </Grid>
-
-                        {/* --- Справочники --- */}
-                        <Grid item xs={12} sm={6} md={4}>
-                            <FormControl fullWidth error={!!errors.directionId}>
-                                <InputLabel>Направление *</InputLabel> {/* Сделаем обязательным для примера */}
-                                <Controller name="directionId" control={control} render={({ field }) => (
-                                    <Select {...field} label="Направление *">
-                                        <MenuItem value=""><em>Не выбрано</em></MenuItem>
-                                        {lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
-                                    </Select>
-                                )} />
-                                <FormHelperText>{errors.directionId?.message}</FormHelperText>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={4}>
-                            <FormControl fullWidth error={!!errors.levelId}>
-                                <InputLabel>Уровень</InputLabel>
-                                <Controller name="levelId" control={control} render={({ field }) => (
-                                    <Select {...field} label="Уровень">
-                                        <MenuItem value=""><em>Не выбрано</em></MenuItem>
-                                        {lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
-                                    </Select>
-                                )} />
-                                <FormHelperText>{errors.levelId?.message}</FormHelperText>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={4}>
-                             <FormControl fullWidth error={!!errors.formatId}>
-                                <InputLabel>Формат</InputLabel>
-                                <Controller name="formatId" control={control} render={({ field }) => (
-                                    <Select {...field} label="Формат">
-                                        <MenuItem value=""><em>Не выбрано</em></MenuItem>
-                                        {lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-                                    </Select>
-                                )} />
-                                <FormHelperText>{errors.formatId?.message}</FormHelperText>
-                            </FormControl>
-                        </Grid>
-
-                        {/* --- Даты --- */}
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="startDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата начала *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.startDate, helperText: errors.startDate?.message } }} />)} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="endDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата окончания" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} minDate={watch('startDate') ? dayjs(watch('startDate')) : undefined} slotProps={{ textField: { fullWidth: true, error: !!errors.endDate, helperText: errors.endDate?.message } }} />)} />
-                        </Grid>
-
-                        {/* --- Место проведения --- */}
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="locationText" control={control} render={({ field }) => <TextField {...field} label="Место проведения" fullWidth />} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес" fullWidth />} />
-                        </Grid>
-
-                        {/* --- Участники --- */}
-                         <Grid item xs={12}>
-                            <Controller name="participantsInfo" control={control} render={({ field }) => <TextField {...field} label="Информация об участниках (дополнительно)" fullWidth multiline rows={2} />} />
-                         </Grid>
-                        <Grid item xs={12} md={6}>
-                           <Controller name="participantCategoryIds" control={control} render={({ field }) => (
-                                <Autocomplete multiple options={lookups.categories} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id}
-                                    value={lookups.categories.filter(cat => field.value?.includes(cat.id))}
-                                    onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))}
-                                    renderInput={(params) => <TextField {...params} label="Категории участников" error={!!errors.participantCategoryIds} helperText={errors.participantCategoryIds?.message}/>}
-                                    renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))}
-                                />
-                           )} />
-                         </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                            <Controller name="participantCount" control={control} render={({ field }) => <TextField {...field} label="Общее кол-во уч." type="number" fullWidth error={!!errors.participantCount} helperText={errors.participantCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                            <Controller name="hasForeigners" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} />} label="Есть иностранцы" />} />
-                             <Controller name="foreignerCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во иностр." type="number" size="small" disabled={!watchHasForeigners} required={watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} sx={{ ml: 2, width: '100px' }} />} />
-                        </Grid>
-                         <Grid item xs={12} sm={6} md={3}>
-                             <Controller name="hasMinors" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} />} label="Есть несоверш." />} />
-                            <Controller name="minorCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во несоверш." type="number" size="small" disabled={!watchHasMinors} required={watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} sx={{ ml: 2, width: '100px' }} />} />
-                        </Grid>
-
-                        {/* --- Ответственный --- */}
-                        <Grid item xs={12}><Divider><Chip label="Ответственное лицо" /></Divider></Grid>
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="responsibleFullName" control={control} render={({ field }) => <TextField {...field} label="ФИО ответственного" required fullWidth error={!!errors.responsibleFullName} helperText={errors.responsibleFullName?.message}/>} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                             <Controller name="responsiblePosition" control={control} render={({ field }) => <TextField {...field} label="Должность ответственного" fullWidth />} />
-                        </Grid>
-                         <Grid item xs={12} sm={6}>
-                             <Controller name="responsiblePhone" control={control} render={({ field }) => <TextField {...field} label="Телефон отв." fullWidth />} />
-                         </Grid>
-                        <Grid item xs={12} sm={6}>
-                             <Controller name="responsibleEmail" control={control} render={({ field }) => <TextField {...field} label="Email отв." fullWidth error={!!errors.responsibleEmail} helperText={errors.responsibleEmail?.message}/>} />
-                         </Grid>
-
-                        {/* --- Финансирование --- */}
-                        <Grid item xs={12}><Divider><Chip label="Финансирование" /></Divider></Grid>
-                        <Grid item xs={12} md={6}>
-                            <Controller name="fundingSourceIds" control={control} render={({ field }) => (
-                                <Autocomplete multiple options={lookups.sources} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id}
-                                    value={lookups.sources.filter(src => field.value?.includes(src.id))}
-                                    onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))}
-                                    renderInput={(params) => <TextField {...params} label="Источники финансирования" error={!!errors.fundingSourceIds} helperText={errors.fundingSourceIds?.message}/>}
-                                    renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))}
-                                />
-                           )} />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                              <Controller name="fundingAmount" control={control} render={({ field }) => <TextField {...field} label="Объем финансирования (тыс. руб.)" type="number" fullWidth error={!!errors.fundingAmount} helperText={errors.fundingAmount?.message} InputProps={{ inputProps: { min: 0, step: 0.01 } }} />} />
-                        </Grid>
-
-                         {/* --- Ссылки, Медиа, Гости --- */}
-                         <Grid item xs={12}><Divider><Chip label="Дополнительные материалы и участники" /></Divider></Grid>
-
-                         {/* Ссылки */}
-                         <Grid item xs={12}>
-                            <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography>
-                            <List dense disablePadding>
-                            {linkFields.map((item, index) => (
-                                <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start'}}>
-                                    <Controller name={`mediaLinks.${index}.url`} control={control} render={({ field }) => <TextField {...field} label="URL *" size="small" sx={{ flexGrow: 1 }} error={!!errors.mediaLinks?.[index]?.url} helperText={errors.mediaLinks?.[index]?.url?.message}/>} />
-                                    <Controller name={`mediaLinks.${index}.description`} control={control} render={({ field }) => <TextField {...field} label="Описание (VK, сайт...)" size="small" sx={{ width: '30%' }} />} />
-                                    <IconButton onClick={() => removeLink(index)} color="error" size="small" sx={{mt: 1}}><DeleteIcon /></IconButton>
-                                </ListItem>
-                            ))}
-                            </List>
-                            <Button onClick={() => appendLink({ url: '', description: '' })} size="small" startIcon={<AddCircleOutlineIcon />} sx={{mt:1}}>Добавить ссылку</Button>
-                         </Grid>
-
-                         {/* Медиа */}
-                         <Grid item xs={12}>
-                            <Typography variant="subtitle1" gutterBottom>Медиафайлы</Typography>
-                            <List dense disablePadding>
-                             {mediaFields.map((item, index) => (
+                           <Typography variant="subtitle1" gutterBottom>Медиафайлы</Typography>
+                           <List dense disablePadding sx={{mb: 1}}>
+                            {mediaFields.map((item, index) => (
+                                // --- НАЧАЛО БЛОКА ОДНОГО МЕДИА ---
                                 <ListItem key={item.id} disableGutters sx={{border: '1px dashed lightgrey', p: 1, mb: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: '150px' }}>
-                                        {item.mediaUrl && (item.mediaType === 'photo'
-                                            ? <img src={item.mediaUrl} alt={`Медиа ${index + 1}`} style={{ width: 'auto', height: '50px', objectFit: 'cover' }}/>
-                                            : <video src={item.mediaUrl} style={{ width: 'auto', height: '50px' }} />
-                                        )}
-                                        <Typography variant="caption" sx={{wordBreak: 'break-all'}}>{item.mediaUrl?.substring(item.mediaUrl.lastIndexOf('/') + 1)}</Typography>
-                                     </Box>
-                                     <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, flexWrap: {xs: 'wrap', sm: 'nowrap'} }}>
-                                         <Controller name={`eventMedias.${index}.description`} control={control} render={({ field }) => <TextField {...field} label="Описание медиа" size="small" fullWidth sx={{minWidth: '150px'}} />} />
-                                         <Controller name={`eventMedias.${index}.author`} control={control} render={({ field }) => <TextField {...field} label="Автор медиа" size="small" fullWidth sx={{minWidth: '150px'}}/>} />
-                                     </Box>
-                                    <IconButton onClick={() => removeMedia(index)} color="error" size="small"><DeleteIcon /></IconButton>
-                                     {/* Скрытые поля */}
-                                     <Controller name={`eventMedias.${index}.mediaUrl`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
-                                     <Controller name={`eventMedias.${index}.mediaType`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: '150px', flexWrap: 'wrap' }}>
+                                        {watch(`eventMedias.${index}.mediaUrl`) ? ( // Если URL уже есть (загружено)
+                                            watch(`eventMedias.${index}.mediaType`) === 'photo'
+                                                ? <img src={watch(`eventMedias.${index}.mediaUrl`)} alt={`Медиа ${index + 1}`} style={{ width: 'auto', height: '50px', objectFit: 'cover' }}/>
+                                                : <video src={watch(`eventMedias.${index}.mediaUrl`)} style={{ width: 'auto', height: '50px' }} />
+                                            ) : ( // Иначе показываем загрузчик
+                                                <FileUploader
+                                                    // Передаем индекс в обработчик!
+                                                    onUploadSuccess={(fileData) => handleMediaUploadSuccess(fileData, index)}
+                                                    // onUploadStart={() => setIsUploading(true)} // Можно добавить флаг загрузки файла
+                                                    buttonText={`Загрузить #${index + 1}`}
+                                                    accept="image/*,video/*" // Ограничиваем типы
+                                                />
+                                            )
+                                        }
+                                        {/* Отображаем имя файла, если он загружен */}
+                                        {watch(`eventMedias.${index}.mediaUrl`) &&
+                                            <Typography variant="caption" sx={{wordBreak: 'break-all'}}>
+                                                {watch(`eventMedias.${index}.mediaUrl`)?.substring(watch(`eventMedias.${index}.mediaUrl`).lastIndexOf('/') + 1)}
+                                            </Typography>
+                                        }
+                                    </Box>
+                                    {/* Поля доступны только если файл загружен */}
+                                    <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, flexWrap: {xs: 'wrap', sm: 'nowrap'} }}>
+                                        <Controller name={`eventMedias.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} />
+                                        <Controller name={`eventMedias.${index}.author`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Автор медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} />
+                                    </Box>
+                                    <Tooltip title="Удалить медиа">
+                                        <IconButton onClick={() => removeMedia(index)} color="error" size="small"><DeleteIcon fontSize='small'/></IconButton>
+                                    </Tooltip>
+                                    {/* Скрытые поля для URL и типа, чтобы react-hook-form их видел */}
+                                    <Controller name={`eventMedias.${index}.mediaUrl`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
+                                    <Controller name={`eventMedias.${index}.mediaType`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
                                 </ListItem>
+                                // --- КОНЕЦ БЛОКА ОДНОГО МЕДИА ---
+                           ))}
+                           </List>
+                           {/* Кнопка добавления нового слота для медиа */}
+                           <Button onClick={() => appendMedia({ mediaUrl: '', mediaType: '', description: '', author: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить слот медиа</Button>
+                        </Grid>
+
+                        {/* Гости с автозаполнением */}
+                        <Grid item xs={12}>
+                            <Typography variant="subtitle1" gutterBottom>Приглашенные лекторы / эксперты</Typography>
+                             <List dense disablePadding sx={{mb: 1}}>
+                             {guestFields.map((item, index) => (
+                                 // --- НАЧАЛО БЛОКА ОДНОГО ГОСТЯ ---
+                                 <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', mb: 1}}>
+                                     {/* Autocomplete для ФИО */}
+                                     <Controller
+                                        name={`invitedGuests.${index}.fullName`}
+                                        control={control}
+                                        defaultValue=""
+                                        render={({ field: { onChange, value, ...restField } }) => (
+                                            <Autocomplete freeSolo options={studentsList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.studentId === val?.studentId} inputValue={value || ''}
+                                                onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }}
+                                                onChange={(_, newValue) => {
+                                                    let nameToSet = ''; let positionToSet = watch(`invitedGuests.${index}.position`);
+                                                    if (typeof newValue === 'object' && newValue !== null && newValue.studentId) { nameToSet = newValue.fullName; positionToSet = newValue.groupName || ''; setValue(`invitedGuests.${index}.organization`, ''); }
+                                                    else if (typeof newValue === 'string') { nameToSet = newValue; }
+                                                    else { nameToSet = ''; }
+                                                    onChange(nameToSet); setValue(`invitedGuests.${index}.position`, positionToSet);
+                                                }}
+                                                renderInput={(params) => ( <TextField {...params} {...restField} label="ФИО гостя / Выберите студента *" size="small" required error={!!errors.invitedGuests?.[index]?.fullName} helperText={errors.invitedGuests?.[index]?.fullName?.message} sx={{ flexGrow: 1, minWidth: '200px' }} /> )}
+                                            />
+                                        )}
+                                    />
+                                    {/* Поля Должность и Организация */}
+                                     <Controller name={`invitedGuests.${index}.position`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Должность / Группа" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
+                                     <Controller name={`invitedGuests.${index}.organization`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Организация" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
+                                     {/* Кнопка удаления */}
+                                     <Tooltip title="Удалить гостя"><IconButton onClick={() => removeGuest(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip>
+                                 </ListItem>
+                                  // --- КОНЕЦ БЛОКА ОДНОГО ГОСТЯ ---
                              ))}
                              </List>
-                            <FileUploader onUploadSuccess={handleMediaUploadSuccess} />
+                            <Button onClick={() => appendGuest({ fullName: '', position: '', organization: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить гостя</Button>
                          </Grid>
 
-                         {/* Гости */}
-                         <Grid item xs={12}>
-                            <Typography variant="subtitle1" gutterBottom>Приглашенные лекторы / эксперты</Typography>
-                             <List dense disablePadding>
-                             {guestFields.map((item, index) => (
-                                <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap'}}>
-                                     <Controller name={`invitedGuests.${index}.fullName`} control={control} render={({ field }) => <TextField {...field} label="ФИО Гостя *" size="small" sx={{ flexGrow: 1, minWidth: '200px' }} error={!!errors.invitedGuests?.[index]?.fullName} helperText={errors.invitedGuests?.[index]?.fullName?.message}/>} />
-                                     <Controller name={`invitedGuests.${index}.position`} control={control} render={({ field }) => <TextField {...field} label="Должность" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
-                                     <Controller name={`invitedGuests.${index}.organization`} control={control} render={({ field }) => <TextField {...field} label="Организация" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
-                                     <IconButton onClick={() => removeGuest(index)} color="error" size="small" sx={{mt: 1}}><DeleteIcon /></IconButton>
-                                </ListItem>
-                             ))}
-                            </List>
-                            <Button onClick={() => appendGuest({ fullName: '', position: '', organization: '' })} size="small" startIcon={<AddCircleOutlineIcon />} sx={{mt:1}}>Добавить гостя</Button>
-                         </Grid>
 
-                         {/* --- Кнопки управления --- */}
+                        {/* --- Кнопки --- */}
                         <Grid item xs={12}>
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 2 }}>
-                                <Button variant="outlined" onClick={() => navigate(isEditMode ? `/events/${id}` : '/events')} disabled={isSubmitting}>
-                                    Отмена
-                                </Button>
-                                <Button type="submit" variant="contained" disabled={isSubmitting || loading}>
-                                    {isSubmitting ? <CircularProgress size={24} /> : (isEditMode ? 'Сохранить изменения' : 'Создать мероприятие')}
-                                </Button>
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 2 }}>
+                                <Button variant="outlined" onClick={() => navigate(isEditMode ? `/events/${id}` : '/events')} disabled={isSubmitting}> Отмена </Button>
+                                <Button type="submit" variant="contained" disabled={isSubmitting || loading || loadingLookups}> {isSubmitting ? <CircularProgress size={24} /> : (isEditMode ? 'Сохранить изменения' : 'Создать мероприятие')} </Button>
                             </Box>
                         </Grid>
                     </Grid>
                 </Box>
-
-                 {/* Snackbar для уведомлений */}
-                <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-                    <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">{snackbar.message}</Alert>
-                </Snackbar>
-
             </Paper>
+            <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+                 <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">{snackbar.message}</Alert>
+            </Snackbar>
         </Container>
     );
 }

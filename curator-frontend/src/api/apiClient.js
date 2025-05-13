@@ -1,49 +1,41 @@
-// src/api/apiClient.js
+// Полный путь: src/api/apiClient.js
+// Версия БЕЗ автоматического выхода при ошибках 401/403
+
 import axios from 'axios';
 
-// Укажите URL вашего бэкенда. Используйте переменную окружения.
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Определяем базовый URL API (лучше из .env файла фронтенда)
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
+// Создаем экземпляр axios
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
-// Interceptor для добавления JWT токена в заголовки Authorization
+// --- Интерцептор ЗАПРОСОВ (Request Interceptor) ---
+// Добавляет токен авторизации ко всем исходящим запросам
 apiClient.interceptors.request.use(
-  (config) => {
-    // Получаем токен из localStorage (или другого хранилища)
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    (config) => {
+        // Получаем токен из localStorage (ключ 'authToken' должен совпадать с используемым в AuthContext)
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            // Если токен есть, добавляем заголовок Authorization
+            config.headers['Authorization'] = `Bearer ${token}`;
+        }
+        return config; // Возвращаем измененную конфигурацию запроса
+    },
+    (error) => {
+        // Пробрасываем ошибку конфигурации запроса
+        console.error("Axios request config error:", error); // Логируем ошибку настройки
+        return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
 );
 
-// Interceptor для обработки ошибок (например, 401 Unauthorized для авто-разлогина)
-apiClient.interceptors.response.use(
-  (response) => response, // Просто возвращаем успешный ответ
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      // Если получили 401 (не авторизован), возможно, токен истек или невалиден
-      console.warn('Unauthorized access - 401. Logging out.');
-      // Очищаем токен и данные пользователя (логику лучше вынести в AuthContext)
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('authUser');
-      // Перенаправляем на страницу входа
-      // Используйте window.location или useNavigate, если это внутри компонента/контекста
-      window.location.href = '/login'; // Простой редирект
-    }
-    // Важно пробросить ошибку дальше, чтобы ее можно было обработать в вызывающем коде
-    return Promise.reject(error);
-  }
-);
-
+// --- Интерцептор ОТВЕТОВ УДАЛЕН ---
+// В этой версии нет автоматической обработки ошибок 401/403 и редиректа на /login.
+// Ошибки нужно будет обрабатывать вручную в каждом месте вызова API
+// или реализовать другой механизм глобальной обработки ошибок.
 
 export default apiClient;

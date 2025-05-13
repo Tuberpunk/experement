@@ -1,6 +1,6 @@
 // src/api/events.js
 import apiClient from './apiClient';
-
+import { saveAs } from 'file-saver';
 // Получение списка мероприятий с фильтрами и пагинацией
 export const getEvents = async (params = {}) => {
   try {
@@ -50,13 +50,14 @@ export const updateEvent = async (id, eventData) => {
 };
 
 // Обновление статуса мероприятия
-export const updateEventStatus = async (id, status) => {
+export const updateEventStatus = async (eventId, status) => {
   try {
-    const response = await apiClient.patch(`/events/${id}/status`, { status });
-    return response.data;
+      // Отправляем PATCH запрос на специальный эндпоинт
+      const response = await apiClient.patch(`/events/${eventId}/status`, { status });
+      return response.data;
   } catch (error) {
-    console.error(`API Error updating status for event ${id}:`, error);
-    throw error;
+      console.error(`API Error updating status for event ${eventId}:`, error);
+      throw error;
   }
 };
 
@@ -97,4 +98,37 @@ export const exportAllEvents = async (params = {}) => {
         console.error("API Error exporting all events:", error);
         throw error;
     }
+};
+
+export const exportEvents = async (filterParams = {}) => {
+  try {
+      console.log("Requesting export with filters:", filterParams); // Отладка
+      // Отправляем GET запрос на эндпоинт экспорта
+      const response = await apiClient.get('/events/export', {
+          params: filterParams, // Передаем фильтры как query параметры
+          responseType: 'blob' // !!! ВАЖНО: Ожидаем файл (бинарные данные)
+      });
+
+      // Используем file-saver для сохранения полученного blob
+      const filename = `Мероприятия_Экспорт_${new Date().toISOString().substring(0,10)}.xlsx`; // Формируем имя файла
+      saveAs(response.data, filename); // Функция saveAs из file-saver
+
+      // Возвращаем что-то для индикации успеха (хотя файл уже скачивается)
+      return { success: true, filename };
+
+  } catch (error) {
+      console.error("API Error exporting events:", error);
+      // Попытаться прочитать сообщение об ошибке из blob, если оно есть
+      if (error.response && error.response.data instanceof Blob && error.response.data.type === "application/json") {
+          const errorText = await error.response.data.text();
+          try {
+               const errorJson = JSON.parse(errorText);
+               throw new Error(errorJson.message || 'Ошибка при экспорте');
+           } catch (parseError) {
+                throw new Error('Не удалось обработать ошибку сервера при экспорте.');
+           }
+       } else {
+            throw error; // Пробрасываем стандартную ошибку Axios
+       }
+  }
 };
