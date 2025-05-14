@@ -53,16 +53,18 @@ db.Student.belongsTo(db.StudentGroup, { foreignKey: 'groupId', as: 'StudentGroup
 
 // Student <-> StudentTag (Многие-ко-Многим через StudentTagAssignment)
 db.Student.belongsToMany(db.StudentTag, {
-    through: db.StudentTagAssignment, // Указываем модель связующей таблицы
-    foreignKey: 'student_id',         // Внешний ключ в связующей таблице, ссылающийся на Student
-    otherKey: 'tag_id',               // Внешний ключ в связующей таблице, ссылающийся на StudentTag
-    as: 'Tags'                        // Псевдоним для доступа к тегам студента
+    through: db.StudentTagAssignment, // Явно указываем модель промежуточной таблицы
+    foreignKey: 'student_id',         // Внешний ключ в StudentTagAssignment, ссылающийся на Student
+    otherKey: 'tag_id',               // Внешний ключ в StudentTagAssignment, ссылающийся на StudentTag
+    as: 'Tags',                       // Псевдоним для доступа к тегам студента (student.getTags(), student.Tags)
+    timestamps: false                 // Если в StudentTagAssignment нет createdAt/updatedAt
 });
 db.StudentTag.belongsToMany(db.Student, {
-    through: db.StudentTagAssignment,
+    through: db.StudentTagAssignment, // Явно указываем модель промежуточной таблицы
     foreignKey: 'tag_id',
     otherKey: 'student_id',
-    as: 'Students'                   // Псевдоним для доступа к студентам с этим тегом
+    as: 'Students',                   // Псевдоним для доступа к студентам с этим тегом (studentTag.getStudents())
+    timestamps: false
 });
 // Можно добавить прямые связи к промежуточной таблице, если нужно получать доп. поля (assignmentDate, notes)
 db.Student.hasMany(db.StudentTagAssignment, { foreignKey: 'student_id', as: 'TagAssignments'});
