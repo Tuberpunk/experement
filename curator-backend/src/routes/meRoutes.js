@@ -28,4 +28,10 @@ router.put(
     authenticateToken, // Доступно всем авторизованным пользователям
     meController.updateMyProfile
 );
+
+router.put(
+    '/password',
+    authenticateToken, // Доступно всем авторизованным пользователям
+    meController.changeMyPassword
+);
 module.exports = router;

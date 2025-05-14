@@ -34,3 +34,14 @@ export const updateMyProfile = async (profileData) => {
         throw error;
     }
 };
+
+export const changeMyPassword = async (passwordData) => {
+    try {
+        // Отправляем PUT запрос на эндпоинт /api/me/password
+        const response = await apiClient.put('/me/password', passwordData);
+        return response.data; // Ожидаем ответ с сообщением
+    } catch (error) {
+        console.error("API Error changing password:", error);
+        throw error; // Пробрасываем ошибку для обработки в компоненте
+    }
+};

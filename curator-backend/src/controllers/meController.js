@@ -1,6 +1,8 @@
 // Полный путь: src/controllers/meController.js
 const { User, Role, Student, StudentGroup } = require('../models');
 const { Op } = require('sequelize');
+const bcrypt = require('bcrypt'); // Нужен для хеширования нового пароля
+const jwt = require('jsonwebtoken');
 
 exports.getMyStudents = async (req, res) => {
     const curatorUserId = req.user.id;
@@ -129,5 +131,54 @@ exports.updateMyProfile = async (req, res) => {
            return res.status(400).json({ message: "Ошибка валидации данных", errors: error.errors.map(e => e.message) });
         }
         res.status(500).json({ message: 'Ошибка сервера при обновлении профиля' });
+    }
+};
+
+exports.changeMyPassword = async (req, res) => {
+    const userId = req.user.id;
+    const { currentPassword, newPassword, confirmNewPassword } = req.body;
+
+    // 1. Валидация входных данных (остается)
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+        return res.status(400).json({ message: 'Все поля (текущий пароль, новый пароль, подтверждение) обязательны.' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ message: 'Новый пароль должен содержать не менее 6 символов.' });
+    }
+    if (newPassword !== confirmNewPassword) {
+        return res.status(400).json({ message: 'Новый пароль и его подтверждение не совпадают.' });
+    }
+
+    try {
+        // 2. Находим пользователя (остается)
+        const user = await User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'Пользователь не найден.' });
+        }
+
+        // 3. Проверяем текущий пароль (остается)
+        const isCurrentPasswordValid = await user.isValidPassword(currentPassword);
+        if (!isCurrentPasswordValid) {
+            return res.status(400).json({ message: 'Текущий пароль введен неверно.' });
+        }
+
+        // 4. Проверяем, не совпадает ли новый пароль со старым (остается)
+        if (currentPassword === newPassword) {
+            return res.status(400).json({ message: 'Новый пароль не должен совпадать со старым.' });
+        }
+
+        // 5. Обновляем пароль, ПЕРЕДАВАЯ СЫРОЙ ПАРОЛЬ В passwordHash
+        // Хук beforeUpdate в модели User.js позаботится о хешировании
+        await user.update({ passwordHash: newPassword }); // <-- ИЗМЕНЕНИЕ ЗДЕСЬ
+
+        console.log(`User ${userId} successfully changed their password (raw password sent to model hook).`);
+        res.json({ message: 'Пароль успешно изменен.' });
+
+    } catch (error) {
+        console.error(`Error changing password for user ${userId}:`, error);
+        if (error.name === 'SequelizeValidationError') {
+           return res.status(400).json({ message: "Ошибка валидации", errors: error.errors.map(e => e.message) });
+        }
+        res.status(500).json({ message: 'Ошибка сервера при смене пароля.' });
     }
 };

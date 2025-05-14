@@ -26,6 +26,7 @@ import ProfilePage from './pages/ProfilePage';
 import ManageUsersPage from './pages/admin/ManageUsersPage';
 import AssignEventPage from './pages/admin/AssignEventPage'; 
 import ProfileEditPage from './pages/ProfileEditPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 // Для MUI Date Pickers
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -64,6 +65,7 @@ function App() {
                     <Route path="/students" element={<StudentListPage />} />
                     <Route path="/students/:id" element={<StudentDetailPage />} />
                     <Route path="/calendar" element={<CalendarPage />} />
+                    <Route path="/profile/change-password" element={<ChangePasswordPage />} />
                     {/* --- КОНЕЦ РОУТОВ ДЛЯ СТУДЕНТОВ --- */}
 
                     {/* --- Админские роуты --- */}

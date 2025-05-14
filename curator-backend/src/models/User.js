@@ -66,32 +66,29 @@ const User = sequelize.define('User', {
     // Поле updatedAt не определяем здесь, так как мы его отключаем ниже
 }, {
     // Опции модели
-    tableName: 'users',     // Имя таблицы в базе данных
-    timestamps: true,       // Включаем управление временными метками (для createdAt)
-    updatedAt: false,       // <<<--- ОТКЛЮЧАЕМ управление полем updatedAt
-    createdAt: 'created_at', // Явно указываем имя столбца createdAt в БД
+    tableName: 'users',
+    timestamps: true,
+    updatedAt: false, // Если вы не используете updatedAt
+    createdAt: 'created_at',
 
-    // Хуки для хеширования пароля
     hooks: {
-        beforeCreate: async (user) => {
-            if (user.passwordHash) {
+        beforeCreate: async (userInstance) => {
+            // Хешируем пароль, если он передан в passwordHash при создании
+            if (userInstance.passwordHash) {
                 const salt = await bcrypt.genSalt(10);
-                user.passwordHash = await bcrypt.hash(user.passwordHash, salt);
+                userInstance.passwordHash = await bcrypt.hash(userInstance.passwordHash, salt);
             }
         },
-        beforeUpdate: async (user) => {
-            // Хешируем пароль только если он был изменен
-            if (user.changed('passwordHash') && user.passwordHash) {
-                 // Нужно убедиться, что мы не хешируем уже захешированный пароль повторно,
-                 // поэтому лучше передавать в update НЕхешированный пароль,
-                 // а поле назвать, например, 'password' и хешировать его в passwordHash.
-                 // Этот хук может требовать доработки в зависимости от логики обновления пароля.
-                 // Простой вариант - хешировать всегда, если поле изменилось:
-                 const salt = await bcrypt.genSalt(10);
-                 user.passwordHash = await bcrypt.hash(user.passwordHash, salt);
+        beforeUpdate: async (userInstance) => {
+            // Хешируем пароль, если поле passwordHash было изменено
+            // (и предполагаем, что в него передали новый сырой пароль)
+            if (userInstance.changed('passwordHash') && userInstance.passwordHash) {
+                const salt = await bcrypt.genSalt(10);
+                userInstance.passwordHash = await bcrypt.hash(userInstance.passwordHash, salt);
             }
-       }
-    }
+        }
+    }        
+    
 });
 
 // Метод экземпляра для проверки пароля

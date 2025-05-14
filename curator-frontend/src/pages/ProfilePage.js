@@ -17,6 +17,7 @@ import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import EditIcon from '@mui/icons-material/Edit'; // Для кнопки редактирования
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'; // <-- Добавлен
 import CancelIcon from '@mui/icons-material/Cancel'; // <-- Добавлен
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
 // Контекст и API
 import { useAuth } from '../contexts/AuthContext'; // Убедитесь, что путь правильный
 import { getMyProfile } from '../api/me'; // <-- Исправлен путь импорта
@@ -109,8 +110,19 @@ function ProfilePage() {
                          component={RouterLink} // Используем Link из роутера
                          to="/profile/edit" // Ссылка на страницу редактирования
                      >
-                         Редактировать профиль
-                      </Button>
+                        Редактировать профиль
+                          </Button>
+                          {/* --- НОВАЯ КНОПКА СМЕНЫ ПАРОЛЯ --- */}
+                          <Button
+                             variant="outlined"
+                             color="secondary" // Другой цвет для отличия
+                             startIcon={<VpnKeyIcon />}
+                             component={RouterLink}
+                             to="/profile/change-password" // Ссылка на новую страницу
+                          >
+                             Сменить пароль
+                          </Button>
+                      
                  </Box>
 
                 <Divider sx={{ mb: 3 }}/>
