@@ -388,31 +388,41 @@ exports.updateEvent = async (req, res) => {
 // PATCH /api/events/:id/status
 exports.updateEventStatus = async (req, res) => {
     const event = req.event; // Получаем событие из middleware loadEvent
-    const { status } = req.body;
+    const { status: newStatus } = req.body; // Переименовали для ясности
     const validStatuses = ['Запланировано', 'Проведено', 'Не проводилось (Отмена)'];
 
-    if (!status || !validStatuses.includes(status)) {
+    if (!newStatus || !validStatuses.includes(newStatus)) {
         return res.status(400).json({ message: 'Неверный или отсутствующий статус' });
     }
 
     try {
-        // Проверка прав доступа [6, 7, 16]
-        if (req.user.role !== 'administrator') {
-            // Не-админ может менять только с "Запланировано" на "Проведено"
-            if (event.status !== 'Запланировано' || status !== 'Проведено') {
-                 return res.status(403).json({ message: 'Доступ запрещен: недостаточно прав для изменения статуса' });
-            }
-            // Дополнительная проверка, является ли пользователь создателем (хотя isCreatorOrAdmin уже есть в роуте, дублируем для ясности логики статуса)
-             if (event.createdByUserId !== req.user.id) {
-                  return res.status(403).json({ message: 'Доступ запрещен: вы не являетесь создателем этого мероприятия' });
-             }
-        }
-        // Администратор может менять статус свободно
+        const currentEventStatus = event.status; // Эту переменную можно не использовать, если обращаемся к event.status напрямую
 
-        await event.update({ status });
+        // --- ИСПРАВЛЕННАЯ ЛОГИКА ПРОВЕРКИ ПРАВ ---
+        if (req.user.role !== 'administrator') {
+            // Если не администратор, проверяем, является ли пользователь создателем
+            if (event.createdByUserId !== req.user.id) {
+                return res.status(403).json({ message: 'Доступ запрещен: вы не являетесь создателем этого мероприятия' });
+            }
+
+            // Куратор (создатель) может менять статус:
+            // 1. с "Запланировано" на "Проведено"
+            // 2. с "Запланировано" на "Не проводилось (Отмена)"
+            if (currentEventStatus === 'Запланировано' && (newStatus === 'Проведено' || newStatus === 'Не проводилось (Отмена)')) {
+                // Разрешенный переход для куратора
+            } else {
+                // Все остальные переходы для куратора запрещены
+                return res.status(403).json({ message: `Доступ запрещен: куратор не может изменить статус с "${currentEventStatus}" на "${newStatus}".` });
+            }
+        }
+        // Администратор может менять статус свободно (нет дополнительных проверок здесь)
+        // --- КОНЕЦ ЛОГИКИ ПРОВЕРКИ ПРАВ ---
+
+        await event.update({ status: newStatus });
 
         // Отправка уведомлений админу о смене статуса [15]
-        // sendAdminNotification(`Статус мероприятия "${event.title}" (ID: ${event.eventId}) изменен на "${status}" пользователем ${req.user.email}`);
+        // TODO: Реализовать sendAdminNotification
+        // sendAdminNotification(`Статус мероприятия "${event.title}" (ID: ${event.eventId}) изменен на "${newStatus}" пользователем ${req.user.email}`);
 
         res.json({ message: 'Статус успешно обновлен', event: { eventId: event.eventId, status: event.status } });
 

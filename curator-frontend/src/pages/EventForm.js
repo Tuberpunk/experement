@@ -1,29 +1,30 @@
 // Полный путь: src/pages/EventForm.js
 import React, { useEffect, useState, useCallback } from 'react';
-// Хуки и компоненты React Router
 import { useParams, useNavigate, Navigate, Link as RouterLink, useLocation } from 'react-router-dom';
-// React Hook Form и Yup для валидации
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-// Компоненты Material UI
 import {
     Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar,
     Select, MenuItem, FormControl, InputLabel, FormHelperText, Checkbox, FormControlLabel, Autocomplete, Chip,
-    IconButton, List, ListItem, ListItemText, Divider, Tooltip
+    IconButton, List, ListItem, ListItemText, Divider, Tooltip,
+    Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 // Иконки MUI
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
+import SaveIcon from '@mui/icons-material/Save';
 // Контекст, API, Компоненты
 import { useAuth } from '../contexts/AuthContext';
-import { getEventById, createEvent, updateEvent } from '../api/events';
-import { getUsers } from '../api/users'; // Для выбора Ответственного
+import { getEventById, createEvent, updateEvent, updateEventStatus } from '../api/events';
+import { getUsers } from '../api/users';
 import { getEventDirections, getEventLevels, getEventFormats, getParticipantCategories, getFundingSources } from '../api/lookups';
-import { getMyStudentsForReport } from '../api/curatorReports'; // Для выбора Гостя-Студента
-import FileUploader from '../components/FileUploader'; // Компонент загрузчика
+import { getMyStudentsForReport } from '../api/curatorReports';
+import FileUploader from '../components/FileUploader';
 
 // --- Данные для подсказок ---
 const ugtuLocations = [
@@ -41,7 +42,6 @@ const ugtuLocations = [
     { label: 'Бассейн "Буревестник"', address: 'г. Ухта, ул. Мира, д. 13а' },
     { label: 'Общежитие №1', address: 'г. Ухта, ул. Мира, д. 13' },
     { label: 'Общежитие №2', address: 'г. Ухта, ул. Мира, д. 11' },
-    // ... добавьте другие актуальные объекты ...
 ];
 // ---------------------------
 
@@ -59,75 +59,60 @@ const eventSchema = yup.object().shape({
     addressText: yup.string().nullable().transform(value => value || null),
     participantsInfo: yup.string().nullable().transform(value => value || null),
     status: yup.string().oneOf(['Запланировано', 'Проведено', 'Не проводилось (Отмена)']),
-
     directionId: yup.number().nullable().positive().integer(),
     levelId: yup.number().nullable().positive().integer(),
     formatId: yup.number().nullable().positive().integer(),
-
-    participantCount: yup.number().nullable().integer('Должно быть целое число').min(0, 'Не может быть отрицательным').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
+    participantCount: yup.number().nullable().integer('Должно быть целое число').min(0).typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
     hasForeigners: yup.boolean(),
     foreignerCount: yup.number().nullable().when('hasForeigners', {
         is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
         otherwise: schema => schema.nullable().transform(() => null)
-    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
+    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : Number(value))),
     hasMinors: yup.boolean(),
     minorCount: yup.number().nullable().when('hasMinors', {
         is: true, then: schema => schema.min(0).integer().typeError('Введите число'),
         otherwise: schema => schema.nullable().transform(() => null)
-    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : value)),
-
-    fundingAmount: yup.number().nullable().min(0, 'Не может быть отрицательным').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
-
+    }).transform(value => (isNaN(value) || value === null || value === '' ? 0 : Number(value))),
+    fundingAmount: yup.number().nullable().min(0).typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
     participantCategoryIds: yup.array().of(yup.number().integer()).nullable(),
     fundingSourceIds: yup.array().of(yup.number().integer()).nullable(),
-
-    mediaLinks: yup.array().of(yup.object().shape({
-        id: yup.number().nullable(),
-        url: yup.string().url("Неверный URL").required("URL обязателен"),
-        description: yup.string().nullable()
-    })).nullable(),
-    // Добавили проверку, что eventMedias является массивом
-    eventMedias: yup.array().of(yup.object().shape({
-        id: yup.number().nullable(),
-        mediaUrl: yup.string().required('URL медиафайла обязателен (загрузите файл)'),
-        mediaType: yup.string().required('Тип медиафайла не определен'),
-        description: yup.string().nullable(),
-        author: yup.string().nullable(),
-    })).nullable(),
-    invitedGuests: yup.array().of(yup.object().shape({
-        id: yup.number().nullable(),
-        fullName: yup.string().required("ФИО гостя обязательно"),
-        position: yup.string().nullable(),
-        organization: yup.string().nullable(),
-    })).nullable(),
+    mediaLinks: yup.array().of(yup.object().shape({ id: yup.number().nullable(), url: yup.string().url("URL некорректен").required("URL обязателен"), description: yup.string().nullable() })).nullable(),
+    eventMedias: yup.array().of(yup.object().shape({ id: yup.number().nullable(), mediaUrl: yup.string().required('URL медиафайла обязателен (загрузите файл)'), mediaType: yup.string().required('Тип медиафайла не определен'), description: yup.string().nullable(), author: yup.string().nullable() })).nullable(),
+    invitedGuests: yup.array().of(yup.object().shape({ id: yup.number().nullable(), fullName: yup.string().required("ФИО гостя обязательно"), position: yup.string().nullable(), organization: yup.string().nullable() })).nullable(),
 });
 // ------------------------
 
-
 function EventForm({ mode }) {
-    const { id } = useParams();
+    const { id: paramIdFromUrl } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
     const { user } = useAuth();
-    const [loading, setLoading] = useState(mode === 'edit');
+
+    const isCompletingMode = !!location.state?.isCompleting;
+    const isEditModeOnly = mode === 'edit' && !isCompletingMode;
+    const isCreateMode = mode === 'create' && !isCompletingMode;
+    const eventIdToLoadOrUpdate = paramIdFromUrl || location.state?.eventId;
+
+    const [loading, setLoading] = useState(isEditModeOnly || isCompletingMode);
     const [loadingLookups, setLoadingLookups] = useState(true);
     const [formError, setFormError] = useState('');
     const [lookups, setLookups] = useState({ directions: [], levels: [], formats: [], categories: [], sources: [] });
     const [studentsList, setStudentsList] = useState([]);
     const [usersList, setUsersList] = useState([]);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-    const isEditMode = mode === 'edit';
+    const [openCancelDialog, setOpenCancelDialog] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [initialEventData, setInitialEventData] = useState(null);
 
-    // === ВЫЗОВ ХУКОВ ===
-    const { control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm({
+    const { control, handleSubmit, reset, setValue, watch, getValues, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(eventSchema),
         defaultValues: {
-            title: location.state?.title || '', // <-- Предзаполнение Названия из Календаря
+            title: location.state?.title || '',
             description: '', directionId: '', levelId: '', formatId: '',
-            startDate: location.state?.startDate ? dayjs(location.state.startDate) : null, // <-- Предзаполнение Даты начала
+            startDate: location.state?.startDate ? dayjs(location.state.startDate) : null,
             endDate: location.state?.endDate && location.state.startDate !== location.state.endDate
                      ? dayjs(location.state.endDate).subtract(1, 'day')
-                     : (location.state?.startDate ? dayjs(location.state.startDate) : null), // <-- Предзаполнение Даты окончания
+                     : (location.state?.startDate ? dayjs(location.state.startDate) : null),
             locationText: '', addressText: '',
             participantsInfo: '', participantCount: '', hasForeigners: false, foreignerCount: '0',
             hasMinors: false, minorCount: '0', responsibleFullName: '', responsiblePosition: '',
@@ -138,27 +123,22 @@ function EventForm({ mode }) {
         }
     });
 
-    // Динамические списки
     const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({ control, name: "mediaLinks" });
     const { fields: mediaFields, append: appendMedia, remove: removeMedia } = useFieldArray({ control, name: "eventMedias" });
     const { fields: guestFields, append: appendGuest, remove: removeGuest } = useFieldArray({ control, name: "invitedGuests" });
 
-    // Наблюдение за чекбоксами и местом
     const watchHasForeigners = watch('hasForeigners');
     const watchHasMinors = watch('hasMinors');
     const watchLocationText = watch('locationText');
 
-    // --- Загрузка данных ---
     const loadInitialData = useCallback(async () => {
         setLoadingLookups(true); setFormError('');
         try {
-            // Загружаем все параллельно
             const [dirs, levels, formats, cats, srcs, myStudents, usersData] = await Promise.all([
                 getEventDirections(), getEventLevels(), getEventFormats(),
                 getParticipantCategories(), getFundingSources(),
                 (user?.role === 'curator' || user?.role === 'administrator') ? getMyStudentsForReport() : Promise.resolve([]),
-                // Загружаем всех кураторов и админов для списка ответственных
-                getUsers({ limit: 1000, role: ['curator', 'administrator'], isActive: true }) // Добавил isActive: true
+                getUsers({ limit: 1000, role: ['curator', 'administrator'], isActive: true })
             ]);
             setLookups({
                 directions: dirs || [], levels: levels || [], formats: formats || [],
@@ -166,25 +146,23 @@ function EventForm({ mode }) {
             });
             setStudentsList(myStudents || []);
             setUsersList(usersData.users || []);
-
         } catch (err) {
-            console.error("Failed to load lookups/users/students for event form:", err);
+            console.error("Failed to load data for event form:", err);
             setFormError('Не удалось загрузить справочные данные и списки пользователей.');
         } finally { setLoadingLookups(false); }
-    }, [user]); // Зависит от роли пользователя
+    }, [user]);
 
     const loadEventData = useCallback(async () => {
-        // Загрузка данных мероприятия в режиме редактирования
-        if (isEditMode && id) {
+        if ((isEditModeOnly || isCompletingMode) && eventIdToLoadOrUpdate) {
             setLoading(true); setFormError('');
-            console.log('[EventForm] Starting loadEventData for ID:', id);
             try {
-                const eventData = await getEventById(id);
-                console.log('[EventForm] Fetched Event Data (Raw):', eventData);
-                if (!eventData) { /* ... обработка не найдено ... */ }
-                if (user?.role !== 'administrator' && user?.id !== eventData.createdByUserId) { /* ... обработка прав ... */ }
-
-                const dataToReset = { // Формируем объект для reset
+                const eventData = await getEventById(eventIdToLoadOrUpdate);
+                if (!eventData) { setFormError('Мероприятие не найдено.'); setLoading(false); return; }
+                if (user?.role !== 'administrator' && user?.id !== eventData.createdByUserId) {
+                    return navigate('/forbidden', { replace: true });
+                }
+                setInitialEventData(eventData);
+                const dataToResetInternal = {
                     title: eventData.title || '', description: eventData.description || '',
                     directionId: eventData.directionId || '', levelId: eventData.levelId || '', formatId: eventData.formatId || '',
                     startDate: eventData.startDate ? dayjs(eventData.startDate) : null,
@@ -202,76 +180,128 @@ function EventForm({ mode }) {
                     eventMedias: eventData.EventMedias?.map(media => ({ id: media.mediaId, mediaUrl: media.mediaUrl || '', mediaType: media.mediaType || '', description: media.description || '', author: media.author || '' })) || [],
                     invitedGuests: eventData.InvitedGuests?.map(guest => ({ id: guest.guestId, fullName: guest.fullName || '', position: guest.position || '', organization: guest.organization || '' })) || [],
                 };
-                console.log('[EventForm] Data prepared for reset:', dataToReset);
-                reset(dataToReset); // Заполняем форму
-                console.log('[EventForm] reset() function called.');
-            } catch (err) { /* ... обработка ошибки ... */ }
-             finally { setLoading(false); }
+                reset(dataToResetInternal);
+            } catch (err) {
+                 setFormError(err.response?.data?.message || err.message || 'Не удалось загрузить данные мероприятия.');
+                 console.error("Fetch event for edit error:", err);
+                 if (err.response?.status === 403 || err.response?.status === 404) { navigate('/events', { replace: true });}
+            } finally { setLoading(false); }
         }
-    }, [id, isEditMode, reset, navigate, user]); // Убрали setValue из зависимостей loadEventData
+    }, [eventIdToLoadOrUpdate, isEditModeOnly, isCompletingMode, reset, navigate, user]);
 
     useEffect(() => {
         loadInitialData().then(() => {
-             // Вызываем loadEventData только ПОСЛЕ завершения loadInitialData,
-             // чтобы списки для Autocomplete были готовы к моменту reset
-             if (isEditMode) {
-                loadEventData();
-            } else if (user && !location.state?.startDate) { // Предзаполняем только если не пришли с календаря
+            if (isEditModeOnly || isCompletingMode) { loadEventData(); }
+            else if (isCreateMode && user && !location.state?.startDate) {
                  setValue('responsibleFullName', user.fullName || '');
                  setValue('responsibleEmail', user.email || '');
-             }
+            }
+            if (isCreateMode && location.state?.title && !watch('title')) {
+                setValue('title', location.state.title);
+            }
         });
-    }, [loadInitialData, loadEventData, isEditMode, user, setValue, location.state]); // Зависимости для useEffect
+    }, [loadInitialData, loadEventData, isEditModeOnly, isCompletingMode, isCreateMode, user, setValue, location.state, watch]);
 
-    // --- Обработчики ---
-    const onSubmit = async (data) => {
+    const onSubmitForm = async (data, newStatusOverride) => {
         setFormError('');
-        // Убедимся, что все числовые поля правильно преобразованы или null
+        const currentEventId = eventIdToLoadOrUpdate;
+        const isActuallyCreating = isCreateMode;
         const parseOptionalInt = (val) => (val === '' || val === null || isNaN(parseInt(val, 10)) ? null : parseInt(val, 10));
         const parseOptionalFloat = (val) => (val === '' || val === null || isNaN(parseFloat(val)) ? null : parseFloat(val));
 
         const eventDataToSend = {
-            ...data,
+            title: data.title, description: data.description,
             startDate: data.startDate ? dayjs(data.startDate).format('YYYY-MM-DD') : null,
             endDate: data.endDate ? dayjs(data.endDate).format('YYYY-MM-DD') : null,
+            locationText: data.locationText || null, addressText: data.addressText || null,
+            participantsInfo: data.participantsInfo || null,
             participantCount: parseOptionalInt(data.participantCount),
+            hasForeigners: data.hasForeigners || false,
+            foreignerCount: data.hasForeigners ? (parseOptionalInt(data.foreignerCount) ?? 0) : 0,
+            hasMinors: data.hasMinors || false,
+            minorCount: data.hasMinors ? (parseOptionalInt(data.minorCount) ?? 0) : 0,
+            responsibleFullName: data.responsibleFullName,
+            responsiblePosition: data.responsiblePosition || null,
+            responsiblePhone: data.responsiblePhone || null,
+            responsibleEmail: data.responsibleEmail || null,
             fundingAmount: parseOptionalFloat(data.fundingAmount),
-            foreignerCount: data.hasForeigners ? parseOptionalInt(data.foreignerCount) ?? 0 : 0, // Отправляем 0 если не число
-            minorCount: data.hasMinors ? parseOptionalInt(data.minorCount) ?? 0 : 0,
-            directionId: data.directionId || null, // Пустую строку в null
-            levelId: data.levelId || null,
-            formatId: data.formatId || null,
+            directionId: data.directionId || null, levelId: data.levelId || null, formatId: data.formatId || null,
             participantCategoryIds: data.participantCategoryIds || [],
             fundingSourceIds: data.fundingSourceIds || [],
-            // Убираем временный 'id' из массивов перед отправкой
             mediaLinks: data.mediaLinks?.map(({ id, ...rest }) => rest) || [],
-            // Фильтруем медиа без URL перед отправкой
             eventMedias: data.eventMedias?.filter(m => m.mediaUrl).map(({ id, ...rest }) => rest) || [],
             invitedGuests: data.invitedGuests?.map(({ id, ...rest }) => rest) || [],
         };
-         // Приводим пустые необязательные строки к null
-         for (const key of ['responsiblePosition', 'responsiblePhone', 'responsibleEmail', 'locationText', 'addressText', 'participantsInfo']) {
-            if (!eventDataToSend[key]) eventDataToSend[key] = null;
-         }
-         delete eventDataToSend.status;
+        // Статус не отправляем в основном объекте, он меняется отдельным запросом или по умолчанию при создании
+        // delete eventDataToSend.status; // Оставляем, если бэкенд ожидает его при updateEvent
 
-        console.log('Data to send:', JSON.stringify(eventDataToSend, null, 2));
+        console.log('Submitting data:', eventDataToSend, 'Requested New Status:', newStatusOverride);
 
         try {
-            let result;
-            if (isEditMode) {
-                result = await updateEvent(id, eventDataToSend);
+            let savedEvent;
+            if (isActuallyCreating) {
+                savedEvent = await createEvent(eventDataToSend);
             } else {
-                result = await createEvent(eventDataToSend);
+                if (!currentEventId) throw new Error("ID мероприятия для обновления не определен.");
+                // При обновлении отправляем все данные, включая описание
+                savedEvent = await updateEvent(currentEventId, eventDataToSend);
             }
-            setSnackbar({ open: true, message: `Мероприятие успешно ${isEditMode ? 'обновлено' : 'создано'}!`, severity: 'success' });
-            setTimeout(() => navigate(`/events/${isEditMode ? id : result.eventId}`), 1500);
+
+            let finalStatus = savedEvent.status;
+            if (newStatusOverride) {
+                await updateEventStatus(savedEvent.eventId, newStatusOverride);
+                finalStatus = newStatusOverride;
+            }
+
+            setSnackbar({ open: true, message: `Мероприятие успешно ${isActuallyCreating ? 'создано' : 'обновлено'}! ${newStatusOverride ? `Статус изменен на "${finalStatus}".` : ''}`, severity: 'success' });
+
+            if (finalStatus === 'Проведено' && isCompletingMode) {
+                setTimeout(() => navigate('/curator-reports/new', { state: { eventId: savedEvent.eventId, eventTitle: savedEvent.title, eventDate: savedEvent.startDate } }), 1500);
+            } else if (finalStatus === 'Не проводилось (Отмена)') {
+                setTimeout(() => navigate('/events'), 1500);
+            } else {
+                setTimeout(() => navigate(`/events/${savedEvent.eventId}`), 1500);
+            }
+
         } catch (err) {
-             const message = err.response?.data?.message || err.message || `Не удалось ${isEditMode ? 'обновить' : 'создать'} мероприятие.`;
-             setFormError(message);
-             setSnackbar({ open: true, message: message, severity: 'error' });
-             console.error("Event form submission error:", err);
-         }
+            const message = err.response?.data?.message || err.message || `Не удалось ${isActuallyCreating ? 'создать' : 'обновить'} мероприятие.`;
+            setFormError(message);
+            setSnackbar({ open: true, message: message, severity: 'error' });
+            console.error("Event form submission error:", err);
+        }
+    };
+
+    const handleMarkAsConducted = () => {
+        handleSubmit((data) => onSubmitForm(data, 'Проведено'))();
+    };
+
+    const handleOpenCancelDialog = () => {
+        const currentFormData = getValues();
+        const baseDescription = initialEventData?.description || currentFormData.description || '';
+        // Сохраняем текущие данные формы, чтобы использовать их при подтверждении отмены
+        setInitialEventData(prev => ({ ...(prev || {}), ...currentFormData, description: baseDescription }));
+        setOpenCancelDialog(true);
+    };
+    const handleCloseCancelDialog = () => {
+        setOpenCancelDialog(false);
+        setCancelReason('');
+        setFormError(''); // Также сбрасываем ошибку формы
+    };
+
+    const handleConfirmCancelEvent = () => { // Убрали async
+        if (!cancelReason.trim()) {
+            alert('Укажите причину отмены.'); // Или используйте setFormError для диалога
+            return;
+        }
+        handleCloseCancelDialog();
+
+        const currentDescription = initialEventData?.description || ''; // Берем описание из сохраненных initialEventData
+        const updatedDescription = `${currentDescription}\n\n--- ОТМЕНЕНО ---\nПричина: ${cancelReason.trim()}`;
+
+        // Вызываем основной обработчик submit, передавая обновленное описание и новый статус
+        // Передаем все данные формы (dataWithReason), чтобы сохранились и другие возможные изменения
+        const dataWithReason = { ...getValues(), description: updatedDescription };
+        handleSubmit((formData) => onSubmitForm(formData, 'Не проводилось (Отмена)'))(dataWithReason);
     };
 
     const handleMediaUploadSuccess = useCallback((fileData, index) => {
@@ -279,16 +309,18 @@ function EventForm({ mode }) {
             setValue(`eventMedias.${index}.mediaUrl`, fileData.mediaUrl, { shouldDirty: true });
             setValue(`eventMedias.${index}.mediaType`, fileData.mediaType, { shouldDirty: true });
             setSnackbar({ open: true, message: `Файл "${fileData.filename || 'файл'}" загружен для медиа ${index + 1}`, severity: 'info' });
-        } else { setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла для медиа ${index + 1}`, severity: 'warning' }); }
-     }, [setValue]);
+        } else {
+            setSnackbar({ open: true, message: `Ошибка при обработке загруженного файла для медиа ${index + 1}`, severity: 'warning' });
+        }
+    }, [setValue]);
 
     const handleCloseSnackbar = useCallback((event, reason) => {
         if (reason === 'clickaway') return;
         setSnackbar(prev => ({ ...prev, open: false }));
-     }, []);
+    }, []);
 
     // --- Рендеринг ---
-    if (loadingLookups || (loading && isEditMode)) {
+    if (loadingLookups || (loading && (isEditModeOnly || isCompletingMode))) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
 
@@ -296,160 +328,92 @@ function EventForm({ mode }) {
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
             <Paper sx={{ p: { xs: 2, md: 3 } }}>
                 <Typography variant="h4" component="h1" gutterBottom>
-                    {isEditMode ? 'Редактировать мероприятие' : 'Создать новое мероприятие'}
+                    {isCompletingMode ? 'Завершение/Отчет по мероприятию' : (isEditModeOnly ? 'Редактировать мероприятие' : 'Создать новое мероприятие')}
                 </Typography>
-
+                {isCompletingMode && <Alert severity="info" sx={{mb: 2}}>Проверьте и при необходимости обновите данные мероприятия перед сменой статуса.</Alert>}
                 {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
 
-                <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
+                <Box component="form" onSubmit={handleSubmit(data => onSubmitForm(data, null))} noValidate>
                     <Grid container spacing={3}>
-
-                        {/* Название, Описание */}
+                        {/* Секция 1: Основная информация */}
+                        <Grid item xs={12}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>1. Основная информация</Typography></Grid>
                         <Grid item xs={12}><Controller name="title" control={control} render={({ field }) => <TextField {...field} label="Название мероприятия *" required fullWidth error={!!errors.title} helperText={errors.title?.message} />}/></Grid>
                         <Grid item xs={12}><Controller name="description" control={control} render={({ field }) => <TextField {...field} label="Описание (min 100) *" required fullWidth multiline rows={5} error={!!errors.description} helperText={errors.description?.message} />}/></Grid>
-
-                        {/* Справочники */}
-                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.directionId} size="small"><InputLabel id="direction-label">Направление</InputLabel><Controller name="directionId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="direction-label" label="Направление"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.directionId?.message}</FormHelperText></FormControl></Grid>
-                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.levelId} size="small"><InputLabel id="level-label">Уровень</InputLabel><Controller name="levelId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="level-label" label="Уровень"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.levelId?.message}</FormHelperText></FormControl></Grid>
-                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.formatId} size="small"><InputLabel id="format-label">Формат</InputLabel><Controller name="formatId" control={control} defaultValue="" render={({ field }) => (<Select {...field} labelId="format-label" label="Формат"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.formatId?.message}</FormHelperText></FormControl></Grid>
-
-                        {/* Даты */}
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.directionId} size="small"><InputLabel>Направление</InputLabel><Controller name="directionId" control={control} defaultValue="" render={({ field }) => (<Select {...field} label="Направление"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.directionId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.levelId} size="small"><InputLabel>Уровень</InputLabel><Controller name="levelId" control={control} defaultValue="" render={({ field }) => (<Select {...field} label="Уровень"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.levelId?.message}</FormHelperText></FormControl></Grid>
+                        <Grid item xs={12} sm={6} md={4}><FormControl fullWidth error={!!errors.formatId} size="small"><InputLabel>Формат</InputLabel><Controller name="formatId" control={control} defaultValue="" render={({ field }) => (<Select {...field} label="Формат"><MenuItem value=""><em>Не выбрано</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select>)} /><FormHelperText>{errors.formatId?.message}</FormHelperText></FormControl></Grid>
                         <Grid item xs={12} sm={6}><Controller name="startDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата начала *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.startDate, helperText: errors.startDate?.message, size:'small' } }} />)} /></Grid>
                         <Grid item xs={12} sm={6}><Controller name="endDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата окончания" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} minDate={watch('startDate') ? dayjs(watch('startDate')) : undefined} slotProps={{ textField: { fullWidth: true, error: !!errors.endDate, helperText: errors.endDate?.message, size:'small' } }} />)} /></Grid>
 
-                        {/* Место проведения */}
-                        <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} {...restField} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
-                        <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : '')} />} /> </Grid>
+                        {/* Секция 2: Место проведения */}
+                        <Grid item xs={12} sx={{ mt: 2 }}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>2. Место проведения</Typography></Grid>
+                        <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
+                        <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : 'Укажите, если место не объект УГТУ')} />} /> </Grid>
 
-                         {/* Участники */}
-                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Участники" size="small"/></Divider></Grid>
-                         <Grid item xs={12} md={6}><Controller name="participantCategoryIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.categories} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.categories.filter(cat => field.value?.includes(cat.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Категории участников" error={!!errors.participantCategoryIds} helperText={errors.participantCategoryIds?.message}/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
-                         <Grid item xs={12} sm={6} md={3}><Controller name="participantCount" control={control} render={({ field }) => <TextField {...field} label="Общее кол-во уч." type="number" fullWidth size="small" error={!!errors.participantCount} helperText={errors.participantCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasForeigners" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Иностр." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5}><Controller name="foreignerCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5} sx={{pl: {md: 3}}}><Controller name="hasMinors" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={field.value || false} size="small"/>} label="Несоверш." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid>
-                         <Grid item xs={6} sm={3} md={1.5}><Controller name="minorCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
-                         <Grid item xs={12}><Controller name="participantsInfo" control={control} render={({ field }) => <TextField {...field} label="Доп. информация об участниках" fullWidth multiline rows={2} size="small"/>} /></Grid>
+                        {/* Секция 3: Участники */}
+                        <Grid item xs={12} sx={{ mt: 2 }}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>3. Участники</Typography></Grid>
+                        <Grid item xs={12} md={6}><Controller name="participantCategoryIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.categories} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.categories.filter(cat => field.value?.includes(cat.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Категории участников"/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
+                        <Grid item xs={12} sm={6} md={3}><Controller name="participantCount" control={control} render={({ field }) => <TextField {...field} label="Общее кол-во уч." type="number" fullWidth size="small" error={!!errors.participantCount} helperText={errors.participantCount?.message} InputProps={{ inputProps: { min: 0 } }} />} /></Grid>
+                        <Grid item xs={12} sm={6} md={3}> <Grid container spacing={1} alignItems="center"> <Grid item xs={6}><Controller name="hasForeigners" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={!!field.value} size="small"/>} label="Иностранцы" sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid> <Grid item xs={6}><Controller name="foreignerCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasForeigners} error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} fullWidth/>} /></Grid> </Grid> </Grid>
+                        <Grid item xs={12} sm={6} md={3}> <Grid container spacing={1} alignItems="center"> <Grid item xs={6}><Controller name="hasMinors" control={control} render={({ field }) => <FormControlLabel control={<Checkbox {...field} checked={!!field.value} size="small"/>} label="Несовершен." sx={{ '& .MuiSvgIcon-root': { fontSize: 20 } }} />} /></Grid> <Grid item xs={6}><Controller name="minorCount" control={control} defaultValue="0" render={({ field }) => <TextField {...field} label="Кол-во" type="number" size="small" disabled={!watchHasMinors} error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} fullWidth/>} /></Grid> </Grid> </Grid>
+                        <Grid item xs={12}><Controller name="participantsInfo" control={control} render={({ field }) => <TextField {...field} label="Доп. информация об участниках" fullWidth multiline rows={2} size="small"/>} /></Grid>
 
-                         {/* --- Ответственный --- */}
-                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Ответственное лицо" size="small"/></Divider></Grid>
-                         <Grid item xs={12} sm={6}> <Controller name="responsibleFullName" control={control} defaultValue="" render={({ field: { onChange, value, ...restField } }) => ( <Autocomplete freeSolo options={usersList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.userId === val?.userId} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }} onChange={(_, newValue) => { let nameToSet = ''; if (typeof newValue === 'object' && newValue !== null && newValue.userId) { nameToSet = newValue.fullName; setValue('responsiblePosition', newValue.position || '', { shouldValidate: true }); setValue('responsiblePhone', newValue.phoneNumber || '', { shouldValidate: true }); setValue('responsibleEmail', newValue.email || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { nameToSet = newValue; } else { nameToSet = ''; } onChange(nameToSet); }} renderInput={(params) => ( <TextField {...params} {...restField} label="ФИО ответственного *" required fullWidth error={!!errors.responsibleFullName} helperText={errors.responsibleFullName?.message} size="small"/> )} /> )} /> </Grid>
-                         <Grid item xs={12} sm={6}><Controller name="responsiblePosition" control={control} render={({ field }) => <TextField {...field} label="Должность ответственного" fullWidth size="small"/>} /></Grid>
-                         <Grid item xs={12} sm={6}><Controller name="responsiblePhone" control={control} render={({ field }) => <TextField {...field} label="Телефон отв." fullWidth size="small"/>} /></Grid>
-                         <Grid item xs={12} sm={6}><Controller name="responsibleEmail" control={control} render={({ field }) => <TextField {...field} label="Email отв." type="email" fullWidth error={!!errors.responsibleEmail} helperText={errors.responsibleEmail?.message} size="small"/>} /></Grid>
+                        {/* Секция 4: Ответственное лицо */}
+                        <Grid item xs={12} sx={{ mt: 2 }}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>4. Ответственное лицо</Typography></Grid>
+                        <Grid item xs={12} sm={6}> <Controller name="responsibleFullName" control={control} defaultValue="" render={({ field: { onChange, value } }) => ( <Autocomplete freeSolo options={usersList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.userId === val?.userId} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }} onChange={(_, newValue) => { let nameToSet = ''; if (typeof newValue === 'object' && newValue !== null && newValue.userId) { nameToSet = newValue.fullName; setValue('responsiblePosition', newValue.position || '', { shouldValidate: true }); setValue('responsiblePhone', newValue.phoneNumber || '', { shouldValidate: true }); setValue('responsibleEmail', newValue.email || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { nameToSet = newValue; } else { nameToSet = ''; } onChange(nameToSet); }} renderInput={(params) => ( <TextField {...params} label="ФИО ответственного *" required fullWidth error={!!errors.responsibleFullName} helperText={errors.responsibleFullName?.message} size="small"/> )} /> )} /> </Grid>
+                        <Grid item xs={12} sm={6}><Controller name="responsiblePosition" control={control} render={({ field }) => <TextField {...field} label="Должность ответственного" fullWidth size="small"/>} /></Grid>
+                        <Grid item xs={12} sm={6}><Controller name="responsiblePhone" control={control} render={({ field }) => <TextField {...field} label="Телефон отв." fullWidth size="small"/>} /></Grid>
+                        <Grid item xs={12} sm={6}><Controller name="responsibleEmail" control={control} render={({ field }) => <TextField {...field} label="Email отв." type="email" fullWidth error={!!errors.responsibleEmail} helperText={errors.responsibleEmail?.message} size="small"/>} /></Grid>
 
-                         {/* --- Финансирование --- */}
-                         <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Финансирование" size="small"/></Divider></Grid>
-                         <Grid item xs={12} md={6}><Controller name="fundingSourceIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.sources} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.sources.filter(src => field.value?.includes(src.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Источники финансирования" error={!!errors.fundingSourceIds} helperText={errors.fundingSourceIds?.message}/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
-                         <Grid item xs={12} md={6}><Controller name="fundingAmount" control={control} render={({ field }) => <TextField {...field} label="Объем (тыс. руб.)" type="number" fullWidth size="small" error={!!errors.fundingAmount} helperText={errors.fundingAmount?.message} InputProps={{ inputProps: { min: 0, step: 0.01 } }} />} /></Grid>
+                        {/* Секция 5: Финансирование */}
+                        <Grid item xs={12} sx={{ mt: 2 }}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>5. Финансирование</Typography></Grid>
+                        <Grid item xs={12} md={6}><Controller name="fundingSourceIds" control={control} defaultValue={[]} render={({ field }) => ( <Autocomplete multiple options={lookups.sources} getOptionLabel={(o) => o.name} isOptionEqualToValue={(o, v) => o.id === v.id} value={lookups.sources.filter(src => field.value?.includes(src.id))} onChange={(_, newValue) => field.onChange(newValue.map(item => item.id))} renderInput={(params) => <TextField {...params} label="Источники финансирования"/>} renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.name} {...getTagProps({ index })} size="small"/>))} /> )} /></Grid>
+                        <Grid item xs={12} md={6}><Controller name="fundingAmount" control={control} render={({ field }) => <TextField {...field} label="Объем (тыс. руб.)" type="number" fullWidth size="small" error={!!errors.fundingAmount} helperText={errors.fundingAmount?.message} InputProps={{ inputProps: { min: 0, step: 0.01 } }} />} /></Grid>
 
-                        {/* --- Ссылки, Медиа, Гости --- */}
-                        <Grid item xs={12}><Divider sx={{mt:1}}><Chip label="Дополнительные материалы и участники" size="small"/></Divider></Grid>
-
-                        {/* Ссылки */}
-                        <Grid item xs={12}>
-                           <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography>
-                           <List dense disablePadding sx={{mb: 1}}> {linkFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1}}> <Controller name={`mediaLinks.${index}.url`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="URL *" size="small" sx={{ flexGrow: 1 }} error={!!errors.mediaLinks?.[index]?.url} helperText={errors.mediaLinks?.[index]?.url?.message}/>} /> <Controller name={`mediaLinks.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание (VK, сайт...)" size="small" sx={{ width: {xs: '100%', sm:'30%'} }} />} /> <Tooltip title="Удалить ссылку"><IconButton onClick={() => removeLink(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip> </ListItem> ))} </List>
-                           <Button onClick={() => appendLink({ url: '', description: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить ссылку</Button>
-                        </Grid>
-
-                        {/* Медиа */}
-                        <Grid item xs={12}>
-                           <Typography variant="subtitle1" gutterBottom>Медиафайлы</Typography>
-                           <List dense disablePadding sx={{mb: 1}}>
-                            {mediaFields.map((item, index) => (
-                                // --- НАЧАЛО БЛОКА ОДНОГО МЕДИА ---
-                                <ListItem key={item.id} disableGutters sx={{border: '1px dashed lightgrey', p: 1, mb: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: '150px', flexWrap: 'wrap' }}>
-                                        {watch(`eventMedias.${index}.mediaUrl`) ? ( // Если URL уже есть (загружено)
-                                            watch(`eventMedias.${index}.mediaType`) === 'photo'
-                                                ? <img src={watch(`eventMedias.${index}.mediaUrl`)} alt={`Медиа ${index + 1}`} style={{ width: 'auto', height: '50px', objectFit: 'cover' }}/>
-                                                : <video src={watch(`eventMedias.${index}.mediaUrl`)} style={{ width: 'auto', height: '50px' }} />
-                                            ) : ( // Иначе показываем загрузчик
-                                                <FileUploader
-                                                    // Передаем индекс в обработчик!
-                                                    onUploadSuccess={(fileData) => handleMediaUploadSuccess(fileData, index)}
-                                                    // onUploadStart={() => setIsUploading(true)} // Можно добавить флаг загрузки файла
-                                                    buttonText={`Загрузить #${index + 1}`}
-                                                    accept="image/*,video/*" // Ограничиваем типы
-                                                />
-                                            )
-                                        }
-                                        {/* Отображаем имя файла, если он загружен */}
-                                        {watch(`eventMedias.${index}.mediaUrl`) &&
-                                            <Typography variant="caption" sx={{wordBreak: 'break-all'}}>
-                                                {watch(`eventMedias.${index}.mediaUrl`)?.substring(watch(`eventMedias.${index}.mediaUrl`).lastIndexOf('/') + 1)}
-                                            </Typography>
-                                        }
-                                    </Box>
-                                    {/* Поля доступны только если файл загружен */}
-                                    <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, flexWrap: {xs: 'wrap', sm: 'nowrap'} }}>
-                                        <Controller name={`eventMedias.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} />
-                                        <Controller name={`eventMedias.${index}.author`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Автор медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} />
-                                    </Box>
-                                    <Tooltip title="Удалить медиа">
-                                        <IconButton onClick={() => removeMedia(index)} color="error" size="small"><DeleteIcon fontSize='small'/></IconButton>
-                                    </Tooltip>
-                                    {/* Скрытые поля для URL и типа, чтобы react-hook-form их видел */}
-                                    <Controller name={`eventMedias.${index}.mediaUrl`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
-                                    <Controller name={`eventMedias.${index}.mediaType`} control={control} render={({ field }) => <input type="hidden" {...field} />} />
-                                </ListItem>
-                                // --- КОНЕЦ БЛОКА ОДНОГО МЕДИА ---
-                           ))}
-                           </List>
-                           {/* Кнопка добавления нового слота для медиа */}
-                           <Button onClick={() => appendMedia({ mediaUrl: '', mediaType: '', description: '', author: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить слот медиа</Button>
-                        </Grid>
-
-                        {/* Гости с автозаполнением */}
-                        <Grid item xs={12}>
-                            <Typography variant="subtitle1" gutterBottom>Приглашенные лекторы / эксперты</Typography>
-                             <List dense disablePadding sx={{mb: 1}}>
-                             {guestFields.map((item, index) => (
-                                 // --- НАЧАЛО БЛОКА ОДНОГО ГОСТЯ ---
-                                 <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', mb: 1}}>
-                                     {/* Autocomplete для ФИО */}
-                                     <Controller
-                                        name={`invitedGuests.${index}.fullName`}
-                                        control={control}
-                                        defaultValue=""
-                                        render={({ field: { onChange, value, ...restField } }) => (
-                                            <Autocomplete freeSolo options={studentsList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.studentId === val?.studentId} inputValue={value || ''}
-                                                onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }}
-                                                onChange={(_, newValue) => {
-                                                    let nameToSet = ''; let positionToSet = watch(`invitedGuests.${index}.position`);
-                                                    if (typeof newValue === 'object' && newValue !== null && newValue.studentId) { nameToSet = newValue.fullName; positionToSet = newValue.groupName || ''; setValue(`invitedGuests.${index}.organization`, ''); }
-                                                    else if (typeof newValue === 'string') { nameToSet = newValue; }
-                                                    else { nameToSet = ''; }
-                                                    onChange(nameToSet); setValue(`invitedGuests.${index}.position`, positionToSet);
-                                                }}
-                                                renderInput={(params) => ( <TextField {...params} {...restField} label="ФИО гостя / Выберите студента *" size="small" required error={!!errors.invitedGuests?.[index]?.fullName} helperText={errors.invitedGuests?.[index]?.fullName?.message} sx={{ flexGrow: 1, minWidth: '200px' }} /> )}
-                                            />
-                                        )}
-                                    />
-                                    {/* Поля Должность и Организация */}
-                                     <Controller name={`invitedGuests.${index}.position`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Должность / Группа" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
-                                     <Controller name={`invitedGuests.${index}.organization`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Организация" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} />
-                                     {/* Кнопка удаления */}
-                                     <Tooltip title="Удалить гостя"><IconButton onClick={() => removeGuest(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip>
-                                 </ListItem>
-                                  // --- КОНЕЦ БЛОКА ОДНОГО ГОСТЯ ---
-                             ))}
-                             </List>
-                            <Button onClick={() => appendGuest({ fullName: '', position: '', organization: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить гостя</Button>
-                         </Grid>
-
+                        {/* Секция 6: Дополнительные материалы */}
+                        <Grid item xs={12} sx={{ mt: 2 }}><Typography variant="h6" gutterBottom component="div" sx={{ borderBottom: 1, borderColor: 'divider', pb: 1, mb: 2 }}>6. Дополнительные материалы</Typography></Grid>
+                        <Grid item xs={12}> <Typography variant="subtitle1" gutterBottom>Ссылки СМИ / Соцсети</Typography> <List dense disablePadding sx={{mb: 1}}> {linkFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1}}> <Controller name={`mediaLinks.${index}.url`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="URL *" size="small" sx={{ flexGrow: 1 }} error={!!errors.mediaLinks?.[index]?.url} helperText={errors.mediaLinks?.[index]?.url?.message}/>} /> <Controller name={`mediaLinks.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание (VK, сайт...)" size="small" sx={{ width: {xs: '100%', sm:'30%'} }} />} /> <Tooltip title="Удалить ссылку"><IconButton onClick={() => removeLink(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip> </ListItem> ))} </List> <Button onClick={() => appendLink({ url: '', description: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить ссылку</Button> </Grid>
+                        <Grid item xs={12}> <Typography variant="subtitle1" gutterBottom>Медиафайлы</Typography> <List dense disablePadding sx={{mb: 1}}> {mediaFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{border: '1px dashed lightgrey', p: 1, mb: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}> <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: '150px', flexWrap: 'wrap' }}> {watch(`eventMedias.${index}.mediaUrl`) ? ( watch(`eventMedias.${index}.mediaType`) === 'photo' ? <img src={watch(`eventMedias.${index}.mediaUrl`)} alt={`Медиа ${index + 1}`} style={{ width: 'auto', height: '50px', objectFit: 'cover' }}/> : <video src={watch(`eventMedias.${index}.mediaUrl`)} style={{ width: 'auto', height: '50px' }} /> ) : ( <FileUploader onUploadSuccess={(fileData) => handleMediaUploadSuccess(fileData, index)} buttonText={`Загрузить #${index + 1}`} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf"/> )} {watch(`eventMedias.${index}.mediaUrl`) && <Typography variant="caption" sx={{wordBreak: 'break-all'}}>{watch(`eventMedias.${index}.mediaUrl`)?.substring(watch(`eventMedias.${index}.mediaUrl`).lastIndexOf('/') + 1)}</Typography>} </Box> <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, flexWrap: {xs: 'wrap', sm: 'nowrap'} }}> <Controller name={`eventMedias.${index}.description`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Описание медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} /> <Controller name={`eventMedias.${index}.author`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Автор медиа" size="small" fullWidth sx={{minWidth: '150px'}} disabled={!watch(`eventMedias.${index}.mediaUrl`)} />} /> </Box> <Tooltip title="Удалить медиа"><IconButton onClick={() => removeMedia(index)} color="error" size="small"><DeleteIcon fontSize='small'/></IconButton></Tooltip> <Controller name={`eventMedias.${index}.mediaUrl`} control={control} render={({ field }) => <input type="hidden" {...field} />} /> <Controller name={`eventMedias.${index}.mediaType`} control={control} render={({ field }) => <input type="hidden" {...field} />} /> </ListItem> ))} </List> <Button onClick={() => appendMedia({ mediaUrl: '', mediaType: '', description: '', author: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить слот медиа</Button> </Grid>
+                        <Grid item xs={12}> <Typography variant="subtitle1" gutterBottom>Приглашенные лекторы / эксперты</Typography> <List dense disablePadding sx={{mb: 1}}> {guestFields.map((item, index) => ( <ListItem key={item.id} disableGutters sx={{display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', mb: 1}}> <Controller name={`invitedGuests.${index}.fullName`} control={control} defaultValue="" render={({ field: { onChange, value } }) => ( <Autocomplete freeSolo options={studentsList} disabled={loadingLookups} getOptionLabel={(option) => (typeof option === 'object' ? option.fullName : option) || ''} isOptionEqualToValue={(option, val) => option.studentId === val?.studentId} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); } }} onChange={(_, newValue) => { let nameToSet = ''; let positionToSet = watch(`invitedGuests.${index}.position`); if (typeof newValue === 'object' && newValue !== null && newValue.studentId) { nameToSet = newValue.fullName; positionToSet = newValue.groupName || ''; setValue(`invitedGuests.${index}.organization`, ''); } else if (typeof newValue === 'string') { nameToSet = newValue; } else { nameToSet = ''; } onChange(nameToSet); setValue(`invitedGuests.${index}.position`, positionToSet); }} renderInput={(params) => ( <TextField {...params} label="ФИО гостя / Выберите студента *" size="small" required error={!!errors.invitedGuests?.[index]?.fullName} helperText={errors.invitedGuests?.[index]?.fullName?.message} sx={{ flexGrow: 1, minWidth: '200px' }} /> )} /> )} /> <Controller name={`invitedGuests.${index}.position`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Должность / Группа" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} /> <Controller name={`invitedGuests.${index}.organization`} control={control} defaultValue="" render={({ field }) => <TextField {...field} label="Организация" size="small" sx={{ width: {xs: '100%', sm: '25%'}, minWidth: '150px' }} />} /> <Tooltip title="Удалить гостя"><IconButton onClick={() => removeGuest(index)} color="error" size="small" sx={{mt: 0.5}}><DeleteIcon fontSize='small'/></IconButton></Tooltip> </ListItem> ))} </List> <Button onClick={() => appendGuest({ fullName: '', position: '', organization: '' })} size="small" startIcon={<AddCircleOutlineIcon />} variant="outlined">Добавить гостя</Button> </Grid>
 
                         {/* --- Кнопки --- */}
-                        <Grid item xs={12}>
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 2 }}>
-                                <Button variant="outlined" onClick={() => navigate(isEditMode ? `/events/${id}` : '/events')} disabled={isSubmitting}> Отмена </Button>
-                                <Button type="submit" variant="contained" disabled={isSubmitting || loading || loadingLookups}> {isSubmitting ? <CircularProgress size={24} /> : (isEditMode ? 'Сохранить изменения' : 'Создать мероприятие')} </Button>
+                        <Grid item xs={12} sx={{ mt: 3 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                                <Button variant="outlined" onClick={() => navigate(isEditModeOnly || isCompletingMode ? `/events/${eventIdToLoadOrUpdate}` : '/events')} disabled={isSubmitting}>
+                                    {isCompletingMode ? "Назад к мероприятию" : "Отмена"}
+                                </Button>
+                                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                                    {isCompletingMode && initialEventData?.status === 'Запланировано' && (
+                                        <>
+                                            <Button variant="contained" color="error" startIcon={<CancelScheduleSendIcon />} onClick={handleOpenCancelDialog} disabled={isSubmitting}> Мероприятие отменено </Button>
+                                            <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={handleMarkAsConducted} disabled={isSubmitting}> Мероприятие проведено </Button>
+                                        </>
+                                    )}
+                                    {(!isCompletingMode || (isCompletingMode && initialEventData?.status !== 'Запланировано')) && (
+                                        <Button type="submit" variant="contained" startIcon={<SaveIcon />} disabled={isSubmitting || loading || loadingLookups}>
+                                            {isSubmitting ? <CircularProgress size={24} /> : (isEditModeOnly ? 'Сохранить изменения' : 'Создать мероприятие')}
+                                        </Button>
+                                    )}
+                                </Box>
                             </Box>
                         </Grid>
                     </Grid>
                 </Box>
             </Paper>
+
+            {/* Диалог для причины отмены */}
+            <Dialog open={openCancelDialog} onClose={handleCloseCancelDialog} fullWidth maxWidth="sm">
+                <DialogTitle>Укажите причину отмены</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{mb:2}}> Пожалуйста, опишите причину, по которой мероприятие было отменено. Эта информация будет добавлена к описанию мероприятия. </DialogContentText>
+                    <TextField autoFocus margin="dense" id="cancelReason" label="Причина отмены" type="text" fullWidth multiline rows={4} variant="outlined" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+                </DialogContent>
+                <DialogActions sx={{pb: 2, pr: 2}}>
+                    <Button onClick={handleCloseCancelDialog}>Отмена</Button>
+                    <Button onClick={handleConfirmCancelEvent} variant="contained" color="primary" disabled={!cancelReason.trim()}>Подтвердить отмену</Button>
+                </DialogActions>
+            </Dialog>
+
             <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
                  <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">{snackbar.message}</Alert>
             </Snackbar>

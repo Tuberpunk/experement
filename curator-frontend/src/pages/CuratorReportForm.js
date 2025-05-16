@@ -1,73 +1,83 @@
 // Полный путь: src/pages/CuratorReportForm.js
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom'; // Добавляем useLocation
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import {
     Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar,
-    Autocomplete, Chip, Select, MenuItem, FormControl, InputLabel, FormHelperText // Добавили Select и т.д.
+    Autocomplete, Chip, FormControl, InputLabel, Select, MenuItem, FormHelperText // Добавили FormControl и т.д.
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import { format } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { createCuratorReport, getMyStudentsForReport } from '../api/curatorReports';
-import { getEvents } from '../api/events'; // <-- Импорт для получения мероприятий
-import { format } from 'date-fns'; // Для форматирования даты в списке мероприятий
-import { ru } from 'date-fns/locale';
+import { getEvents } from '../api/events'; // Для загрузки списка мероприятий, если нужно выбирать
 
-// Обновленная Схема валидации
+// Схема валидации для отчета куратора
 const reportSchema = yup.object().shape({
     reportTitle: yup.string().required('Название/тема отчета обязательны'),
     reportDate: yup.date().required('Дата проведения обязательна').typeError('Неверный формат даты').max(dayjs(), 'Дата не может быть в будущем'),
     locationText: yup.string().nullable(),
     directionText: yup.string().nullable(),
     invitedGuestsInfo: yup.string().nullable(),
-    foreignerCount: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
-    minorCount: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
-    durationMinutes: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : value)),
+    foreignerCount: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : Number(value))),
+    minorCount: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : Number(value))),
+    durationMinutes: yup.number().nullable().min(0, 'Кол-во >= 0').integer('Должно быть целое число').typeError('Введите число').transform(value => (isNaN(value) || value === null || value === '' ? null : Number(value))),
     mediaReferences: yup.string().nullable(),
-    eventId: yup.number().nullable().positive().integer(), // ID Мероприятия (необязательное)
+    eventId: yup.number().nullable().positive('ID должен быть > 0').integer('ID должен быть целым числом'), // ID связанного мероприятия
     studentIds: yup.array().of(yup.number().integer()).min(1, 'Выберите хотя бы одного студента-участника').required('Выберите участников'),
 });
 
 function CuratorReportForm() {
     const navigate = useNavigate();
+    const location = useLocation(); // Получаем location для доступа к state
     const { user } = useAuth();
     const [loadingLookups, setLoadingLookups] = useState(true);
     const [formError, setFormError] = useState('');
     const [studentsList, setStudentsList] = useState([]);
-    const [eventsList, setEventsList] = useState([]); // <-- Состояние для списка мероприятий
+    const [eventsList, setEventsList] = useState([]); // Для выбора мероприятия (если нужно)
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
-    const { control, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm({
+    // Получаем данные из location.state для предзаполнения
+    const passedEventId = location.state?.eventId;
+    const passedEventTitle = location.state?.eventTitle;
+    const passedEventDate = location.state?.eventDate;
+
+    const { control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(reportSchema),
         defaultValues: {
-            reportTitle: '', reportDate: dayjs(), locationText: '', directionText: '', invitedGuestsInfo: '',
-            foreignerCount: '', minorCount: '', durationMinutes: '', mediaReferences: '',
-            eventId: '', // <-- Начальное значение для eventId
+            reportTitle: passedEventTitle ? `Отчет по мероприятию: ${passedEventTitle}` : '',
+            reportDate: passedEventDate ? dayjs(passedEventDate) : dayjs(), // Дата мероприятия или сегодня
+            locationText: '',
+            directionText: '',
+            invitedGuestsInfo: '',
+            foreignerCount: '',
+            minorCount: '',
+            durationMinutes: '',
+            mediaReferences: '',
+            eventId: passedEventId || '', // Предзаполняем ID мероприятия
             studentIds: []
         }
     });
 
-    // Загрузка студентов куратора и мероприятий
+    // Загрузка студентов куратора и, возможно, списка мероприятий
     const loadInitialData = useCallback(async () => {
-        setLoadingLookups(true); setFormError('');
+        setLoadingLookups(true);
+        setFormError('');
         try {
-            // Запрашиваем студентов и недавние мероприятия параллельно
             const [myStudents, eventsData] = await Promise.all([
-                getMyStudentsForReport(),
-                getEvents({ limit: 50, sortBy: 'startDate', sortOrder: 'DESC'}) // Берем 50 последних мероприятий
+                getMyStudentsForReport(), // Загружаем студентов текущего куратора
+                getEvents({ limit: 100, sortBy: 'startDate', sortOrder: 'DESC' }) // Загружаем недавние мероприятия для выбора
             ]);
 
             setStudentsList(myStudents || []);
-            setEventsList(eventsData.events || []); // Сохраняем список мероприятий
+            setEventsList(eventsData.events || []);
 
             if (!myStudents || myStudents.length === 0) {
-                 console.warn("getMyStudentsForReport returned empty or null.");
-                 // Не устанавливаем ошибку формы, просто показываем сообщение в поле Autocomplete
+                 console.warn("getMyStudentsForReport returned empty. No students for selection.");
             }
-
         } catch (err) {
             console.error("Failed to load initial data for report form:", err);
             setFormError('Не удалось загрузить список студентов или мероприятий.');
@@ -76,7 +86,20 @@ function CuratorReportForm() {
         }
     }, []);
 
-    useEffect(() => { loadInitialData(); }, [loadInitialData]);
+    useEffect(() => {
+        loadInitialData();
+        // Если данные пришли из state, дополнительно устанавливаем их через setValue,
+        // на случай если defaultValues не успели подхватить или форма была сброшена.
+        if (passedEventId && !watch('eventId')) {
+            setValue('eventId', passedEventId);
+        }
+        if (passedEventTitle && !watch('reportTitle')) {
+            setValue('reportTitle', `Отчет по мероприятию: ${passedEventTitle}`);
+        }
+        if (passedEventDate && !watch('reportDate')) {
+            setValue('reportDate', dayjs(passedEventDate));
+        }
+    }, [loadInitialData, passedEventId, passedEventTitle, passedEventDate, setValue, watch]);
 
     // Обработчик отправки формы
     const onSubmit = async (data) => {
@@ -84,32 +107,36 @@ function CuratorReportForm() {
         const reportDataToSend = {
             ...data,
             reportDate: data.reportDate ? dayjs(data.reportDate).format('YYYY-MM-DD') : null,
-            foreignerCount: data.foreignerCount === '' ? 0 : parseInt(data.foreignerCount, 10),
-            minorCount: data.minorCount === '' ? 0 : parseInt(data.minorCount, 10),
-            durationMinutes: data.durationMinutes === '' ? null : parseInt(data.durationMinutes, 10),
-            eventId: data.eventId || null, // Отправляем null, если не выбрано
+            foreignerCount: data.foreignerCount === '' || data.foreignerCount === null ? 0 : parseInt(data.foreignerCount, 10),
+            minorCount: data.minorCount === '' || data.minorCount === null ? 0 : parseInt(data.minorCount, 10),
+            durationMinutes: data.durationMinutes === '' || data.durationMinutes === null ? null : parseInt(data.durationMinutes, 10),
+            eventId: data.eventId || null,
             studentIds: data.studentIds || []
         };
         for (const key of ['locationText', 'directionText', 'invitedGuestsInfo', 'mediaReferences']) {
             if (!reportDataToSend[key]) reportDataToSend[key] = null;
         }
 
+        console.log("Sending Curator Report Data:", reportDataToSend);
+
         try {
             const newReport = await createCuratorReport(reportDataToSend);
             setSnackbar({ open: true, message: `Отчет "${newReport.reportTitle}" успешно создан!`, severity: 'success' });
-            setTimeout(() => navigate('/curator-reports'), 1500);
+            setTimeout(() => navigate('/curator-reports'), 1500); // Переход к списку отчетов
         } catch (err) {
             const message = err.response?.data?.message || err.message || `Не удалось создать отчет.`;
             setFormError(message);
             setSnackbar({ open: true, message: message, severity: 'error' });
-            console.error("Report form submission error:", err);
+            console.error("Curator report form submission error:", err);
         }
     };
 
-     const handleCloseSnackbar = useCallback((event, reason) => { /* ... как было ... */ }, []);
+     const handleCloseSnackbar = useCallback((event, reason) => {
+        if (reason === 'clickaway') return;
+        setSnackbar(prev => ({ ...prev, open: false }));
+    }, []);
 
     // --- Рендеринг ---
-    // Проверка роли не нужна здесь, т.к. доступ к роуту /curator-reports/new должен быть у куратора
     if (loadingLookups) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
@@ -132,18 +159,17 @@ function CuratorReportForm() {
                          <Grid item xs={12} md={4}>
                               <Controller name="reportDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата проведения *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} disableFuture maxDate={dayjs()} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.reportDate, helperText: errors.reportDate?.message } }} />)} />
                          </Grid>
-                         {/* ... остальные поля: locationText, directionText, etc. ... */}
-                          <Grid item xs={12} sm={6}>
+                         <Grid item xs={12} sm={6}>
                              <Controller name="locationText" control={control} render={({ field }) => <TextField {...field} label="Место проведения" fullWidth />} />
                          </Grid>
                          <Grid item xs={12} sm={6}>
-                              <Controller name="directionText" control={control} render={({ field }) => <TextField {...field} label="Направление работы" fullWidth />} />
+                              <Controller name="directionText" control={control} render={({ field }) => <TextField {...field} label="Направление работы (напр., патриотическое)" fullWidth />} />
                          </Grid>
                           <Grid item xs={12}>
-                               <Controller name="invitedGuestsInfo" control={control} render={({ field }) => <TextField {...field} label="Приглашенные" fullWidth multiline rows={2} />} />
+                               <Controller name="invitedGuestsInfo" control={control} render={({ field }) => <TextField {...field} label="Приглашенные (ФИО, должность, организация)" fullWidth multiline rows={2} />} />
                           </Grid>
-                           <Grid item xs={6} sm={3}>
-                               <Controller name="foreignerCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во иностр." type="number" fullWidth error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
+                          <Grid item xs={6} sm={3}>
+                               <Controller name="foreignerCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во иностранцев" type="number" fullWidth error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
                           </Grid>
                            <Grid item xs={6} sm={3}>
                               <Controller name="minorCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во несоверш." type="number" fullWidth error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
@@ -152,43 +178,40 @@ function CuratorReportForm() {
                                <Controller name="durationMinutes" control={control} render={({ field }) => <TextField {...field} label="Продолжительность (минут)" type="number" fullWidth error={!!errors.durationMinutes} helperText={errors.durationMinutes?.message} InputProps={{ inputProps: { min: 0 } }} />} />
                            </Grid>
 
-
-                         {/* --- Выбор студентов-участников --- */}
-                         <Grid item xs={12}>
+                          {/* --- Выбор студентов-участников --- */}
+                          <Grid item xs={12}>
                                <Controller
                                     name="studentIds"
                                     control={control}
                                     defaultValue={[]}
                                     render={({ field }) => (
-                                        <Autocomplete multiple id="student-participants-select"
-                                            options={studentsList} // Используем загруженный список
+                                        <Autocomplete multiple id="student-participants-report-autocomplete"
+                                            options={studentsList}
                                             disabled={loadingLookups || studentsList.length === 0}
                                             getOptionLabel={(option) => option.fullName || ''}
                                             isOptionEqualToValue={(option, value) => option.studentId === value.studentId}
                                             value={studentsList.filter(s => field.value?.includes(s.studentId))}
                                             onChange={(_, newValue) => field.onChange(newValue ? newValue.map(item => item.studentId) : [])}
-                                            renderInput={(params) => <TextField {...params} label="Студенты-участники *" required placeholder={loadingLookups ? "Загрузка..." : (studentsList.length === 0 ? "Нет студентов для выбора" : "Выберите...")} error={!!errors.studentIds} helperText={errors.studentIds?.message}/>}
+                                            renderInput={(params) => <TextField {...params} label="Студенты-участники *" required placeholder={loadingLookups ? "Загрузка..." : (studentsList.length === 0 ? "Нет студентов для выбора" : "Выберите из списка...")} error={!!errors.studentIds} helperText={errors.studentIds?.message}/>}
                                             renderTags={(value, getTagProps) => value.map((option, index) => (<Chip variant="outlined" label={option.fullName} {...getTagProps({ index })} size="small"/>))}
                                         />
                                    )}
                                 />
-                                {/* Сообщение, если список студентов не загружен */}
                                 {studentsList.length === 0 && !loadingLookups && !formError.includes("студентов") &&
                                     <Typography variant="caption" color="text.secondary">Не найдены студенты в ваших группах. Выбор участников невозможен.</Typography>
                                 }
                            </Grid>
 
-                         {/* --- Ссылки и опциональная привязка к мероприятию --- */}
+                           {/* --- Ссылки и опциональная привязка к мероприятию --- */}
                            <Grid item xs={12}>
                                <Controller name="mediaReferences" control={control} render={({ field }) => <TextField {...field} label="Ссылки на фото/публикации" fullWidth multiline rows={2} />} />
                            </Grid>
                            <Grid item xs={12}>
                                 <FormControl fullWidth error={!!errors.eventId} size="small" disabled={loadingLookups}>
-                                    <InputLabel id="event-link-label">Связать с мероприятием (необязательно)</InputLabel>
-                                    <Controller name="eventId" control={control} defaultValue="" render={({ field }) => (
-                                        <Select {...field} labelId="event-link-label" label="Связать с мероприятием (необязательно)">
+                                    <InputLabel id="event-link-report-label">Связать с мероприятием (необязательно)</InputLabel>
+                                    <Controller name="eventId" control={control} defaultValue={passedEventId || ""} render={({ field }) => (
+                                        <Select {...field} labelId="event-link-report-label" label="Связать с мероприятием (необязательно)">
                                             <MenuItem value=""><em>Не связано</em></MenuItem>
-                                             {/* Заполняем список мероприятий */}
                                              {eventsList.map(e => (
                                                  <MenuItem key={e.eventId} value={e.eventId}>
                                                      {e.title} ({e.startDate ? format(new Date(e.startDate), 'dd.MM.yyyy') : 'дата?'} )

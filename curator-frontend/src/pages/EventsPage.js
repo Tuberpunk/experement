@@ -1,6 +1,6 @@
 // Полный путь: src/pages/EventsPage.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 // Компоненты MUI
 import {
     Container, Typography, Button, Box, CircularProgress, Alert, Paper, IconButton, Tooltip, Chip,
@@ -17,6 +17,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import MoreVertIcon from '@mui/icons-material/MoreVert'; // Иконка для меню "три точки"
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'; // Отметить как проведено
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined'; // Отметить как отменено
@@ -52,6 +53,7 @@ const initialFilters = {
 
 function EventsPage() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true); // Загрузка основного списка
     const [error, setError] = useState('');
@@ -274,21 +276,21 @@ function EventsPage() {
     };
 
     // --- Рендеринг ---
-    return (
+   return (
          <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
             {/* Заголовок и кнопки */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-                <Typography variant="h4" component="h1"> Мероприятия </Typography>
-                <Box sx={{ display: 'flex', gap: 1}}>
-                     <Button variant="outlined" startIcon={isExporting ? <CircularProgress size={20} color="inherit"/> : <DownloadIcon />} onClick={handleExport} disabled={loading || isExporting || events.length === 0}> Экспорт в Excel </Button>
-                     <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/events/new"> Добавить мероприятие </Button>
-                </Box>
+                 <Typography variant="h4" component="h1"> Мероприятия </Typography>
+                 <Box sx={{ display: 'flex', gap: 1}}>
+                    <Button variant="outlined" startIcon={isExporting ? <CircularProgress size={20} color="inherit"/> : <DownloadIcon />} onClick={handleExport} disabled={loading || isExporting || events.length === 0}> Экспорт в Excel </Button>
+                    <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/events/new"> Добавить мероприятие </Button>
+                 </Box>
             </Box>
 
              {/* Панель фильтров */}
              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>Фильтры</Typography>
-                <Grid container spacing={2} alignItems="flex-end">
+                 <Typography variant="h6" gutterBottom>Фильтры</Typography>
+                 <Grid container spacing={2} alignItems="flex-end">
                     <Grid item xs={12} sm={6} md={4} lg={3}><TextField label="Поиск по названию" name="searchTitle" value={filters.searchTitle} onChange={handleFilterChange} fullWidth size="small" variant="outlined"/></Grid>
                     <Grid item xs={6} sm={3} md={2} lg={2}><FormControl fullWidth size="small" variant="outlined"> <InputLabel>Статус</InputLabel><Select name="status" value={filters.status} label="Статус" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem><MenuItem value="Запланировано">Запланировано</MenuItem><MenuItem value="Проведено">Проведено</MenuItem><MenuItem value="Не проводилось (Отмена)">Отменено</MenuItem></Select></FormControl></Grid>
                     <Grid item xs={6} sm={3} md={2} lg={2}><DatePicker label="Дата начала с" views={['year', 'month', 'day']} value={filters.startDate} onChange={(date) => handleDateFilterChange('startDate', date)} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
@@ -297,7 +299,7 @@ function EventsPage() {
                     <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Уровень</InputLabel><Select name="levelId" value={filters.levelId} label="Уровень" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
                     <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Формат</InputLabel><Select name="formatId" value={filters.formatId} label="Формат" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select></FormControl></Grid>
                     <Grid item xs={12} sm={3} md={'auto'} sx={{ display: 'flex', gap: 1 }}><Button variant="contained" onClick={handleApplyFilters} size="small" startIcon={<FilterListIcon/>} disabled={loading}> Применить </Button><Button variant="outlined" onClick={handleResetFilters} size="small" startIcon={<ClearAllIcon/>} disabled={loading}> Сбросить </Button></Grid>
-                </Grid>
+                 </Grid>
             </Paper>
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -356,16 +358,83 @@ function EventsPage() {
             ) : null }
 
              {/* Меню действий */}
-             <Menu id="actions-menu" anchorEl={anchorEl} open={openMenu && !!currentEventForMenu} onClose={handleMenuClose} MenuListProps={{ 'aria-labelledby': 'basic-button' }} {...(currentEventForMenu && { PaperProps: { style: { minWidth: '200px' } } })}>
-                {currentEventForMenu &&
-                    [ // Пункты меню генерируются условно
-                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (<MenuItem key="edit" component={RouterLink} to={`/events/${currentEventForMenu.eventId}/edit`} onClick={handleMenuClose}><ListItemIcon><EditIcon fontSize="small" /></ListItemIcon><ListItemText>Редактировать</ListItemText></MenuItem>),
-                        (currentEventForMenu.status === 'Запланировано' && (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId)) && (<MenuItem key="conducted" onClick={() => handleStatusChange('Проведено')}><ListItemIcon><CheckCircleOutlineIcon fontSize="small" color="success" /></ListItemIcon><ListItemText>Отметить "Проведено"</ListItemText></MenuItem>),
-                        (user?.role === 'administrator' && currentEventForMenu.status !== 'Не проводилось (Отмена)') && (<MenuItem key="canceled" onClick={() => handleStatusChange('Не проводилось (Отмена)')}><ListItemIcon><CancelOutlinedIcon fontSize="small" color="error" /></ListItemIcon><ListItemText>Отметить "Не проводилось (Отмена)"</ListItemText></MenuItem>),
-                        (user?.role === 'administrator' && currentEventForMenu.status !== 'Запланировано') && (<MenuItem key="planned" onClick={() => handleStatusChange('Запланировано')}><ListItemIcon><ReplayIcon fontSize="small" /></ListItemIcon><ListItemText>Вернуть "Запланировано"</ListItemText></MenuItem>),
-                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && <Divider key="divider"/>,
-                        (user?.role === 'administrator') && (<MenuItem key="delete" onClick={() => handleDeleteClick(currentEventForMenu)} sx={{ color: 'error.main' }}><ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon><ListItemText>Удалить</ListItemText></MenuItem>)
-                    ].filter(Boolean) // Убираем false/null из массива
+             <Menu id="actions-menu" anchorEl={anchorEl} open={openMenu && !!currentEventForMenu} onClose={handleMenuClose} MenuListProps={{ 'aria-labelledby': 'basic-button' }} {...(currentEventForMenu && { PaperProps: { style: { minWidth: '220px' } } })}>
+                {currentEventForMenu && [
+                        // Просмотр (дублирует клик по названию, но можно оставить)
+                        <MenuItem key="view" component={RouterLink} to={`/events/${currentEventForMenu.eventId}`} onClick={handleMenuClose}>
+                            <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon>
+                            <ListItemText>Просмотреть детали</ListItemText>
+                        </MenuItem>,
+
+                        // Редактировать (виден админу или создателю)
+                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
+                             <MenuItem key="edit" component={RouterLink} to={`/events/${currentEventForMenu.eventId}/edit`} onClick={handleMenuClose}>
+                                 <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                                 <ListItemText>Редактировать</ListItemText>
+                             </MenuItem>
+                         ),
+
+                        // --- НОВЫЙ ПУНКТ: Завершить/Отчитаться ---
+                        currentEventForMenu.status === 'Запланировано' &&
+                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
+                            <MenuItem
+                                key="complete_report"
+                                onClick={() => {
+                                    handleMenuClose();
+                                    navigate(`/events/${currentEventForMenu.eventId}/edit`, { // Направляем на форму редактирования
+                                        state: {
+                                            isCompleting: true, // Флаг режима завершения
+                                            eventId: currentEventForMenu.eventId, // Передаем ID
+                                            // Можно передать и другие данные, если нужно для предзаполнения
+                                            // eventTitle: currentEventForMenu.title,
+                                            // eventStartDate: currentEventForMenu.startDate
+                                        }
+                                    });
+                                }}
+                            >
+                                <ListItemIcon><AssignmentTurnedInIcon fontSize="small" color="primary" /></ListItemIcon>
+                                <ListItemText>Завершить / Отчитаться</ListItemText>
+                            </MenuItem>
+                        ),
+                        // ------------------------------------
+
+                        // Пункт "Проведено" (виден админу или создателю, если статус "Запланировано")
+                        // Этот пункт можно будет убрать, если "Завершить/Отчитаться" его полностью заменяет
+                        // или оставить как быстрое действие без перехода на форму редактирования.
+                        // Пока оставим, но он будет дублировать часть логики "Завершить/Отчитаться".
+                        currentEventForMenu.status === 'Запланировано' && (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
+                             <MenuItem key="conducted" onClick={() => handleStatusChange('Проведено')}>
+                                  <ListItemIcon><CheckCircleOutlineIcon fontSize="small" color="success" /></ListItemIcon>
+                                 <ListItemText>Отметить "Проведено"</ListItemText>
+                             </MenuItem>
+                         ),
+
+                         // Пункт "Отменено" (виден только админу, если статус не "Отменено")
+                         user?.role === 'administrator' && currentEventForMenu.status !== 'Не проводилось (Отмена)' && (
+                             <MenuItem key="canceled" onClick={() => handleStatusChange('Не проводилось (Отмена)')}>
+                                 <ListItemIcon><CancelOutlinedIcon fontSize="small" color="error" /></ListItemIcon>
+                                 <ListItemText>Отметить "Не проводилось (Отмена)"</ListItemText>
+                             </MenuItem>
+                         ),
+
+                          // Пункт "Запланировано" (виден только админу, если статус не "Запланировано")
+                         user?.role === 'administrator' && currentEventForMenu.status !== 'Запланировано' && (
+                             <MenuItem key="planned" onClick={() => handleStatusChange('Запланировано')}>
+                                  <ListItemIcon><ReplayIcon fontSize="small" /></ListItemIcon>
+                                 <ListItemText>Вернуть "Запланировано"</ListItemText>
+                             </MenuItem>
+                         ),
+
+                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && <Divider key="divider-delete"/>, // Убрал дублирующийся Divider
+
+                        // Пункт Удалить (виден только админу) - ИСПРАВЛЕНО
+                        (user?.role === 'administrator') && (
+                            <MenuItem key="delete" onClick={() => handleDeleteClick(currentEventForMenu)} sx={{ color: 'error.main' }}>
+                                <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                                <ListItemText>Удалить</ListItemText>
+                            </MenuItem>
+                        )
+                    ].filter(Boolean)
                 }
             </Menu>
 
