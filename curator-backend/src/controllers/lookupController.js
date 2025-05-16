@@ -1,44 +1,51 @@
 // src/controllers/lookupController.js
-const {
-    EventDirection, EventLevel, EventFormat, ParticipantCategory, FundingSource, StudentTag, Role // Добавлен StudentTag
-} = require('../models');
+    const {
+        EventDirection, // Убедитесь, что EventDirection импортирован
+        EventLevel,
+        EventFormat,
+        ParticipantCategory,
+        FundingSource,
+        StudentTag,
+        Role
+    } = require('../models');
 const { Op } = require('sequelize'); // Может понадобиться для проверки уникальности при обновлении
 
 // Общая функция для получения справочника (ИСПРАВЛЕННАЯ)
-const getLookupData = async (Model, req, res) => {
-    try {
-        // Определяем имя атрибута первичного ключа (напр., 'tagId')
-        const pkAttributeName = Model.primaryKeyAttribute;
-        // Определяем имя столбца первичного ключа в БД (напр., 'tag_id')
-        const pkColumnName = Model.rawAttributes[pkAttributeName]?.field || pkAttributeName;
-
-        // Находим имя атрибута для отображения (первый атрибут, не являющийся ПК)
-        let displayNameAttribute = 'name'; // Имя по умолчанию
-        for (const attr in Model.rawAttributes) {
-            if (!Model.rawAttributes[attr].primaryKey) {
-                displayNameAttribute = attr; // Нашли! (напр., 'tagName')
-                break;
+    const getLookupData = async (Model, req, res) => {
+        try {
+            const pkAttributeName = Model.primaryKeyAttribute;
+            const pkColumnName = Model.rawAttributes[pkAttributeName]?.field || pkAttributeName;
+            let displayNameAttribute = 'name';
+            for (const attr in Model.rawAttributes) {
+                if (!Model.rawAttributes[attr].primaryKey && (Model.rawAttributes[attr].fieldName === 'name' || Model.rawAttributes[attr].fieldName === 'level_name' || Model.rawAttributes[attr].fieldName === 'format_name' || Model.rawAttributes[attr].fieldName === 'category_name' || Model.rawAttributes[attr].fieldName === 'source_name' || Model.rawAttributes[attr].fieldName === 'tag_name' || Model.rawAttributes[attr].fieldName === 'role_name')) { // Ищем стандартные имена для названия
+                    displayNameAttribute = attr;
+                    break;
+                } else if (!Model.rawAttributes[attr].primaryKey && !displayNameAttribute) { // Если стандартных нет, берем первое не-ПК
+                     displayNameAttribute = attr;
+                }
             }
+             if (Model.name === "EventDirection" || Model.name === "EventLevel" || Model.name === "EventFormat" || Model.name === "ParticipantCategory" || Model.name === "FundingSource" || Model.name === "Role") { // Для этих моделей поле называется 'name'
+                displayNameAttribute = 'name';
+            } else if (Model.name === "StudentTag") { // Для StudentTag поле называется 'tagName'
+                displayNameAttribute = 'tagName';
+            }
+
+
+            const displayNameColumn = Model.rawAttributes[displayNameAttribute]?.field || displayNameAttribute;
+
+            const items = await Model.findAll({
+                attributes: [
+                    [pkColumnName, 'id'],
+                    [displayNameColumn, 'name'] // Всегда возвращаем как 'name' для единообразия на фронте
+                ],
+                order: [[displayNameAttribute, 'ASC']]
+            });
+            res.json(items);
+        } catch (error) {
+            console.error(`Error fetching ${Model.name}:`, error);
+            res.status(500).json({ message: `Ошибка сервера при получении данных: ${Model.name}` });
         }
-        // Определяем имя столбца для отображения в БД (напр., 'tag_name')
-        const displayNameColumn = Model.rawAttributes[displayNameAttribute]?.field || displayNameAttribute;
-
-        console.log(`Lookup: Fetching ${Model.name}. PK: ${pkColumnName}, Display: ${displayNameColumn} (sorted by ${displayNameAttribute})`); // Лог для отладки
-
-        const items = await Model.findAll({
-            attributes: [
-                [pkColumnName, 'id'],         // Выбрать столбец ID (как 'id')
-                [displayNameColumn, 'name'] // Выбрать столбец имени (как 'name')
-            ],
-             // Сортируем по АТРИБУТУ модели (Sequelize сам подставит правильный столбец)
-            order: [[displayNameAttribute, 'ASC']]
-        });
-        res.json(items);
-    } catch (error) {
-        console.error(`Error fetching ${Model.name}:`, error);
-        res.status(500).json({ message: `Ошибка сервера при получении данных: ${Model.name}` });
-    }
-};
+    };
 // Экспорты остаются прежними
 exports.getEventDirections = (req, res) => getLookupData(EventDirection, req, res);
 exports.getEventLevels = (req, res) => getLookupData(EventLevel, req, res);
@@ -49,13 +56,14 @@ exports.getStudentTags = (req, res) => getLookupData(StudentTag, req, res);
 exports.getRoles = (req, res) => getLookupData(Role, req, res);
 
 exports.createStudentTag = async (req, res) => {
-    const { name } = req.body;
+    const { name } = req.body; // Ожидаем 'name' от фронтенда
     if (!name || name.trim() === '') {
         return res.status(400).json({ message: 'Название тега не может быть пустым' });
     }
     try {
+        // Сохраняем в поле 'tagName' модели
         const newTag = await StudentTag.create({ tagName: name.trim() });
-        // Возвращаем созданный тег в формате { id, name } для консистентности
+        // Возвращаем в стандартном формате { id, name }
         res.status(201).json({ id: newTag.tagId, name: newTag.tagName });
     } catch (error) {
         console.error("Error creating student tag:", error);
@@ -66,37 +74,36 @@ exports.createStudentTag = async (req, res) => {
     }
 };
 
-// PUT /api/lookups/student-tags/:id - Обновить тег
 exports.updateStudentTag = async (req, res) => {
     const tagId = req.params.id;
-    const { name } = req.body;
+    const { name } = req.body; // Ожидаем 'name'
 
     if (!name || name.trim() === '') {
         return res.status(400).json({ message: 'Название тега не может быть пустым' });
     }
-
     try {
         const tag = await StudentTag.findByPk(tagId);
         if (!tag) {
             return res.status(404).json({ message: 'Тег не найден' });
         }
-
-        // Проверка на уникальность нового имени (исключая текущий тег)
+        // Проверка на уникальность нового имени (для поля tagName)
         const existingTag = await StudentTag.findOne({
             where: {
-                tagName: name.trim(),
-                tagId: { [Op.ne]: tagId } // Ищем другое имя, но не у текущего тега
+                tagName: name.trim(), // Проверяем по tagName
+                tagId: { [Op.ne]: tagId }
             }
         });
         if (existingTag) {
-             return res.status(400).json({ message: 'Тег с таким названием уже существует' });
+             return res.status(400).json({ message: 'Тег с таким названием уже существует.' });
         }
-
-        tag.tagName = name.trim();
+        tag.tagName = name.trim(); // Обновляем поле tagName
         await tag.save();
-        res.json({ id: tag.tagId, name: tag.tagName }); // Возвращаем обновленный
+        res.json({ id: tag.tagId, name: tag.tagName }); // Возвращаем name как tagName
     } catch (error) {
         console.error(`Error updating student tag ${tagId}:`, error);
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ message: 'Тег с таким названием уже существует.' });
+        }
         res.status(500).json({ message: 'Ошибка сервера при обновлении тега' });
     }
 };
@@ -122,5 +129,338 @@ exports.deleteStudentTag = async (req, res) => {
              return res.status(400).json({ message: 'Невозможно удалить тег, так как он используется.' });
         }
         res.status(500).json({ message: 'Ошибка сервера при удалении тега' });
+    }
+};
+
+exports.createEventDirection = async (req, res) => {
+        try {
+            const { name } = req.body;
+            if (!name || name.trim() === '') {
+                return res.status(400).json({ message: 'Название направления не может быть пустым.' });
+            }
+            // Проверка на уникальность (если нужно, Sequelize обычно сам это делает при unique constraint)
+            const existingDirection = await EventDirection.findOne({ where: { name: name.trim() } });
+            if (existingDirection) {
+                return res.status(400).json({ message: 'Такое направление уже существует.' });
+            }
+            const newDirection = await EventDirection.create({ name: name.trim() });
+            res.status(201).json(newDirection);
+        } catch (error) {
+            console.error("Error creating event direction:", error);
+            if (error.name === 'SequelizeUniqueConstraintError') { // На случай если проверка выше не сработала
+                return res.status(400).json({ message: 'Такое направление уже существует.' });
+            }
+            res.status(500).json({ message: 'Ошибка сервера при создании направления.' });
+        }
+    };
+
+    exports.updateEventDirection = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name } = req.body;
+            if (!name || name.trim() === '') {
+                return res.status(400).json({ message: 'Название направления не может быть пустым.' });
+            }
+            const direction = await EventDirection.findByPk(id);
+            if (!direction) {
+                return res.status(404).json({ message: 'Направление не найдено.' });
+            }
+            // Проверка на уникальность при изменении (кроме текущей записи)
+            const existingDirection = await EventDirection.findOne({ where: { name: name.trim(), id: { [Op.ne]: id } } }); // Op нужно импортировать
+            if (existingDirection) {
+                return res.status(400).json({ message: 'Такое направление уже существует.' });
+            }
+            direction.name = name.trim();
+            await direction.save();
+            res.json(direction);
+        } catch (error) {
+            console.error("Error updating event direction:", error);
+             if (error.name === 'SequelizeUniqueConstraintError') {
+                return res.status(400).json({ message: 'Такое направление уже существует.' });
+            }
+            res.status(500).json({ message: 'Ошибка сервера при обновлении направления.' });
+        }
+    };
+
+    exports.deleteEventDirection = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const direction = await EventDirection.findByPk(id);
+            if (!direction) {
+                return res.status(404).json({ message: 'Направление не найдено.' });
+            }
+            // ВАЖНО: Проверка использования перед удалением
+            // const relatedEvents = await Event.count({ where: { directionId: id } });
+            // if (relatedEvents > 0) {
+            //     return res.status(400).json({ message: `Нельзя удалить направление "${direction.name}", так как оно используется в ${relatedEvents} мероприятиях.` });
+            // }
+            await direction.destroy();
+            res.status(204).send();
+        } catch (error) {
+            console.error("Error deleting event direction:", error);
+            // Обработка ошибки внешнего ключа, если не была сделана проверка выше
+             if (error.name === 'SequelizeForeignKeyConstraintError') {
+                return res.status(400).json({ message: 'Невозможно удалить направление, так как оно используется в мероприятиях.' });
+            }
+            res.status(500).json({ message: 'Ошибка сервера при удалении направления.' });
+        }
+    };
+
+     exports.createEventLevel = async (req, res) => {
+        try {
+            const { name } = req.body;
+            if (!name || name.trim() === '') {
+                return res.status(400).json({ message: 'Название уровня не может быть пустым.' });
+            }
+            const existingLevel = await EventLevel.findOne({ where: { name: name.trim() } });
+            if (existingLevel) {
+                return res.status(400).json({ message: 'Такой уровень уже существует.' });
+            }
+            const newLevel = await EventLevel.create({ name: name.trim() });
+            res.status(201).json(newLevel);
+        } catch (error) {
+            console.error("Error creating event level:", error);
+            res.status(500).json({ message: 'Ошибка сервера при создании уровня.' });
+        }
+    };
+
+    exports.updateEventLevel = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name } = req.body;
+            if (!name || name.trim() === '') {
+                return res.status(400).json({ message: 'Название уровня не может быть пустым.' });
+            }
+            const level = await EventLevel.findByPk(id);
+            if (!level) {
+                return res.status(404).json({ message: 'Уровень не найден.' });
+            }
+            const existingLevel = await EventLevel.findOne({ where: { name: name.trim(), id: { [Op.ne]: id } } });
+            if (existingLevel) {
+                return res.status(400).json({ message: 'Такой уровень уже существует.' });
+            }
+            level.name = name.trim();
+            await level.save();
+            res.json(level);
+        } catch (error) {
+            console.error("Error updating event level:", error);
+            res.status(500).json({ message: 'Ошибка сервера при обновлении уровня.' });
+        }
+    };
+
+    exports.deleteEventLevel = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const level = await EventLevel.findByPk(id);
+            if (!level) {
+                return res.status(404).json({ message: 'Уровень не найден.' });
+            }
+            // ВАЖНО: Проверка использования перед удалением
+            // const relatedEvents = await Event.count({ where: { levelId: id } });
+            // if (relatedEvents > 0) {
+            //     return res.status(400).json({ message: `Нельзя удалить уровень "${level.name}", так как он используется в ${relatedEvents} мероприятиях.` });
+            // }
+            await level.destroy();
+            res.status(204).send();
+        } catch (error) {
+            console.error("Error deleting event level:", error);
+            if (error.name === 'SequelizeForeignKeyConstraintError') {
+                return res.status(400).json({ message: 'Невозможно удалить уровень, так как он используется в мероприятиях.' });
+            }
+            res.status(500).json({ message: 'Ошибка сервера при удалении уровня.' });
+        }
+    };
+
+
+    exports.createEventFormat = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название формата не может быть пустым.' });
+        }
+        const existingFormat = await EventFormat.findOne({ where: { name: name.trim() } });
+        if (existingFormat) {
+            return res.status(400).json({ message: 'Такой формат уже существует.' });
+        }
+        const newFormat = await EventFormat.create({ name: name.trim() });
+        res.status(201).json(newFormat);
+    } catch (error) {
+        console.error("Error creating event format:", error);
+        res.status(500).json({ message: 'Ошибка сервера при создании формата.' });
+    }
+};
+
+exports.updateEventFormat = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название формата не может быть пустым.' });
+        }
+        const format = await EventFormat.findByPk(id);
+        if (!format) {
+            return res.status(404).json({ message: 'Формат не найден.' });
+        }
+        const existingFormat = await EventFormat.findOne({ where: { name: name.trim(), id: { [Op.ne]: id } } });
+        if (existingFormat) {
+            return res.status(400).json({ message: 'Такой формат уже существует.' });
+        }
+        format.name = name.trim();
+        await format.save();
+        res.json(format);
+    } catch (error) {
+        console.error("Error updating event format:", error);
+        res.status(500).json({ message: 'Ошибка сервера при обновлении формата.' });
+    }
+};
+
+exports.deleteEventFormat = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const format = await EventFormat.findByPk(id);
+        if (!format) {
+            return res.status(404).json({ message: 'Формат не найден.' });
+        }
+        // TODO: Проверка использования перед удалением (Event.count({ where: { formatId: id } }))
+        await format.destroy();
+        res.status(204).send();
+    } catch (error) {
+        console.error("Error deleting event format:", error);
+        if (error.name === 'SequelizeForeignKeyConstraintError') {
+            return res.status(400).json({ message: 'Невозможно удалить формат, так как он используется в мероприятиях.' });
+        }
+        res.status(500).json({ message: 'Ошибка сервера при удалении формата.' });
+    }
+};
+
+exports.createParticipantCategory = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название категории участников не может быть пустым.' });
+        }
+        const existingCategory = await ParticipantCategory.findOne({ where: { name: name.trim() } });
+        if (existingCategory) {
+            return res.status(400).json({ message: 'Такая категория участников уже существует.' });
+        }
+        const newCategory = await ParticipantCategory.create({ name: name.trim() });
+        res.status(201).json(newCategory);
+    } catch (error) {
+        console.error("Error creating participant category:", error);
+        res.status(500).json({ message: 'Ошибка сервера при создании категории участников.' });
+    }
+};
+
+exports.updateParticipantCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название категории участников не может быть пустым.' });
+        }
+        const category = await ParticipantCategory.findByPk(id);
+        if (!category) {
+            return res.status(404).json({ message: 'Категория участников не найдена.' });
+        }
+        const existingCategory = await ParticipantCategory.findOne({ where: { name: name.trim(), id: { [Op.ne]: id } } });
+        if (existingCategory) {
+            return res.status(400).json({ message: 'Такая категория участников уже существует.' });
+        }
+        category.name = name.trim();
+        await category.save();
+        res.json(category);
+    } catch (error) {
+        console.error("Error updating participant category:", error);
+        res.status(500).json({ message: 'Ошибка сервера при обновлении категории участников.' });
+    }
+};
+
+exports.deleteParticipantCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const category = await ParticipantCategory.findByPk(id);
+        if (!category) {
+            return res.status(404).json({ message: 'Категория участников не найдена.' });
+        }
+        // ВАЖНО: Проверка использования перед удалением.
+        // Так как это связь многие-ко-многим с Event, нужно проверить таблицу event_participant_categories.
+        // const relatedEventsCount = await sequelize.models.event_participant_categories.count({ where: { category_id: id } });
+        // if (relatedEventsCount > 0) {
+        //    return res.status(400).json({ message: `Нельзя удалить категорию "${category.name}", так как она используется в ${relatedEventsCount} мероприятиях.` });
+        // }
+        await category.destroy();
+        res.status(204).send();
+    } catch (error) {
+        console.error("Error deleting participant category:", error);
+        if (error.name === 'SequelizeForeignKeyConstraintError') { // На случай если проверка выше не сработает или неполная
+            return res.status(400).json({ message: 'Невозможно удалить категорию участников, так как она используется.' });
+        }
+        res.status(500).json({ message: 'Ошибка сервера при удалении категории участников.' });
+    }
+};
+
+exports.createFundingSource = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название источника финансирования не может быть пустым.' });
+        }
+        const existingSource = await FundingSource.findOne({ where: { name: name.trim() } });
+        if (existingSource) {
+            return res.status(400).json({ message: 'Такой источник финансирования уже существует.' });
+        }
+        const newSource = await FundingSource.create({ name: name.trim() });
+        res.status(201).json(newSource);
+    } catch (error) {
+        console.error("Error creating funding source:", error);
+        res.status(500).json({ message: 'Ошибка сервера при создании источника финансирования.' });
+    }
+};
+
+exports.updateFundingSource = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ message: 'Название источника финансирования не может быть пустым.' });
+        }
+        const source = await FundingSource.findByPk(id);
+        if (!source) {
+            return res.status(404).json({ message: 'Источник финансирования не найден.' });
+        }
+        const existingSource = await FundingSource.findOne({ where: { name: name.trim(), id: { [Op.ne]: id } } });
+        if (existingSource) {
+            return res.status(400).json({ message: 'Такой источник финансирования уже существует.' });
+        }
+        source.name = name.trim();
+        await source.save();
+        res.json(source);
+    } catch (error) {
+        console.error("Error updating funding source:", error);
+        res.status(500).json({ message: 'Ошибка сервера при обновлении источника финансирования.' });
+    }
+};
+
+exports.deleteFundingSource = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const source = await FundingSource.findByPk(id);
+        if (!source) {
+            return res.status(404).json({ message: 'Источник финансирования не найден.' });
+        }
+        // Проверка использования перед удалением.
+        // Связь многие-ко-многим с Event через event_funding_sources.
+        // const relatedEventsCount = await sequelize.models.event_funding_sources.count({ where: { source_id: id } });
+        // if (relatedEventsCount > 0) {
+        //    return res.status(400).json({ message: `Нельзя удалить источник "${source.name}", так как он используется в ${relatedEventsCount} мероприятиях.` });
+        // }
+        await source.destroy();
+        res.status(204).send();
+    } catch (error) {
+        console.error("Error deleting funding source:", error);
+         if (error.name === 'SequelizeForeignKeyConstraintError') { // На случай если проверка выше не сработает
+            return res.status(400).json({ message: 'Невозможно удалить источник финансирования, так как он используется.' });
+        }
+        res.status(500).json({ message: 'Ошибка сервера при удалении источника финансирования.' });
     }
 };

@@ -27,6 +27,7 @@ import ManageUsersPage from './pages/admin/ManageUsersPage';
 import AssignEventPage from './pages/admin/AssignEventPage'; 
 import ProfileEditPage from './pages/ProfileEditPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import ManageLookupsPage from './pages/admin/ManageLookupsPage';
 // Для MUI Date Pickers
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -80,6 +81,7 @@ function App() {
                          <Route path="/students/:id/edit" element={<StudentForm mode="edit" />} />
                          {/* Другие админские роуты */}
                          <Route path="/admin/assign-event" element={<AssignEventPage />} />
+                         <Route path="/admin/lookups" element={<ManageLookupsPage />} />
                          {/* <Route path="/admin/users" element={...} /> */}
                          {/* <Route path="/admin/tags" element={...} /> // Возможно, для управления тегами */}
                     </Route>

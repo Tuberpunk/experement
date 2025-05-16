@@ -53,3 +53,63 @@ export const deleteStudentTag = async (id) => {
         throw error;
     }
 };
+
+export const createEventDirection = async (data) => {
+    const response = await apiClient.post('/lookups/event-directions', data);
+    return response.data;
+};
+export const updateEventDirection = async (id, data) => {
+    const response = await apiClient.put(`/lookups/event-directions/${id}`, data);
+    return response.data;
+};
+export const deleteEventDirection = async (id) => {
+    await apiClient.delete(`/lookups/event-directions/${id}`);
+};
+
+export const createEventLevel = async (data) => {
+    const response = await apiClient.post('/lookups/event-levels', data);
+    return response.data;
+};
+export const updateEventLevel = async (id, data) => {
+    const response = await apiClient.put(`/lookups/event-levels/${id}`, data);
+    return response.data;
+};
+export const deleteEventLevel = async (id) => {
+    await apiClient.delete(`/lookups/event-levels/${id}`);
+};
+
+export const createEventFormat = async (data) => {
+    const response = await apiClient.post('/lookups/event-formats', data);
+    return response.data;
+};
+export const updateEventFormat = async (id, data) => {
+    const response = await apiClient.put(`/lookups/event-formats/${id}`, data);
+    return response.data;
+};
+export const deleteEventFormat = async (id) => {
+    await apiClient.delete(`/lookups/event-formats/${id}`);
+};
+
+export const createParticipantCategory = async (data) => {
+    const response = await apiClient.post('/lookups/participant-categories', data);
+    return response.data;
+};
+export const updateParticipantCategory = async (id, data) => {
+    const response = await apiClient.put(`/lookups/participant-categories/${id}`, data);
+    return response.data;
+};
+export const deleteParticipantCategory = async (id) => {
+    await apiClient.delete(`/lookups/participant-categories/${id}`);
+};
+
+export const createFundingSource = async (data) => {
+    const response = await apiClient.post('/lookups/funding-sources', data);
+    return response.data;
+};
+export const updateFundingSource = async (id, data) => {
+    const response = await apiClient.put(`/lookups/funding-sources/${id}`, data);
+    return response.data;
+};
+export const deleteFundingSource = async (id) => {
+    await apiClient.delete(`/lookups/funding-sources/${id}`);
+};
