@@ -6,7 +6,8 @@ import {
     Container, Typography, Button, Box, CircularProgress, Alert, Paper, IconButton, Tooltip, Chip,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
     Menu, MenuItem, ListItemIcon, ListItemText, Snackbar, Divider,
-    Grid, TextField, Select, FormControl, InputLabel, FormHelperText // Добавлены для фильтров
+    Grid, TextField, Select, FormControl, InputLabel, FormHelperText,
+    Checkbox, FormControlLabel // Добавлены для фильтров
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker'; // Добавлен DatePicker для фильтра
 import dayjs from 'dayjs'; // Нужен для DatePicker
@@ -44,11 +45,13 @@ dayjs.extend(isSameOrBefore);
 
 // Начальное состояние фильтров
 const initialFilters = {
-    searchTitle: '', status: '', directionId: '', levelId: '', formatId: '',
-    startDate: null, endDate: null,
-    // TODO: Добавить сюда новые поля для расширенных фильтров, когда они будут реализованы на бэкенде
-    // responsibleFullName: '', participantCategoryId: '', fundingSourceId: '',
-    // hasMediaLinks: '', hasEventMedia: '',
+    searchTitle: '',
+    status: 'Запланировано', // <-- По умолчанию показываем только "Запланировано"
+    directionId: '',
+    levelId: '',
+    formatId: '',
+    startDate: null,
+    endDate: null,
 };
 
 function EventsPage() {
@@ -77,7 +80,8 @@ function EventsPage() {
     const [loadingLookups, setLoadingLookups] = useState(true); // Флаг загрузки справочников
     // Экспорт
     const [isExporting, setIsExporting] = useState(false); // Флаг процесса экспорта
-
+    const [showCompletedAndCancelled, setShowCompletedAndCancelled] = useState(false);
+    
     // --- Загрузка справочников для фильтров ---
     const loadLookups = useCallback(async () => {
         setLoadingLookups(true);
@@ -151,18 +155,43 @@ function EventsPage() {
     const handleDateFilterChange = (name, date) => {
         setFilters(prev => ({ ...prev, [name]: date ? dayjs(date) : null }));
     };
+    // --- Обработка изменения чекбокса ---
+    const handleShowCompletedChange = (event) => {
+        const isChecked = event.target.checked;
+        setShowCompletedAndCancelled(isChecked);
+        // Сразу обновляем и применяем фильтр по статусу
+        const newStatusFilter = isChecked ? '' : 'Запланировано'; // Если отмечен - все статусы, если нет - только запланированные
+        const newFilters = { ...filters, status: newStatusFilter };
+        setFilters(newFilters); // Обновляем временные фильтры
+        setAppliedFilters(newFilters); // И сразу применяем
+        setPage(0); // Сброс на первую страницу
+    };
 
     // Применение фильтров
     const handleApplyFilters = () => {
-        setPage(0); // Сброс на первую страницу
-        setAppliedFilters(filters); // Копируем текущие значения фильтров в примененные
+        setPage(0);
+        // Перед применением, корректируем фильтр статуса на основе чекбокса
+        const currentFilters = { ...filters };
+        if (!showCompletedAndCancelled) {
+            currentFilters.status = 'Запланировано';
+        } else {
+            // Если чекбокс "показать все" отмечен, и пользователь выбрал какой-то статус,
+            // то оставляем его. Если статус не выбран (пустая строка), то так и отправляем (показать все).
+            // Если же чекбокс отмечен, а в фильтре статуса стоит 'Запланировано', то очищаем его.
+            if (currentFilters.status === 'Запланировано') {
+                currentFilters.status = '';
+            }
+        }
+        setAppliedFilters(currentFilters);
     };
 
     // Сброс фильтров
     const handleResetFilters = () => {
-        setFilters(initialFilters); // Сбрасываем поля ввода
-        setAppliedFilters(initialFilters); // Сбрасываем примененные фильтры
-        setPage(0); // Сброс на первую страницу
+        setShowCompletedAndCancelled(false); // Сбрасываем и чекбокс
+        const defaultStatusFilters = { ...initialFilters, status: 'Запланировано' };
+        setFilters(defaultStatusFilters);
+        setAppliedFilters(defaultStatusFilters);
+        setPage(0);
     };
 
     // Меню действий
@@ -276,30 +305,63 @@ function EventsPage() {
     };
 
     // --- Рендеринг ---
-   return (
+    return (
          <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-            {/* Заголовок и кнопки */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-                 <Typography variant="h4" component="h1"> Мероприятия </Typography>
-                 <Box sx={{ display: 'flex', gap: 1}}>
+                <Typography variant="h4" component="h1"> Мероприятия </Typography>
+                <Box sx={{ display: 'flex', gap: 1}}>
                     <Button variant="outlined" startIcon={isExporting ? <CircularProgress size={20} color="inherit"/> : <DownloadIcon />} onClick={handleExport} disabled={loading || isExporting || events.length === 0}> Экспорт в Excel </Button>
                     <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/events/new"> Добавить мероприятие </Button>
-                 </Box>
+                </Box>
             </Box>
 
              {/* Панель фильтров */}
              <Paper sx={{ p: 2, mb: 3 }}>
-                 <Typography variant="h6" gutterBottom>Фильтры</Typography>
-                 <Grid container spacing={2} alignItems="flex-end">
+                <Typography variant="h6" gutterBottom>Фильтры</Typography>
+                <Grid container spacing={2} alignItems="flex-end">
                     <Grid item xs={12} sm={6} md={4} lg={3}><TextField label="Поиск по названию" name="searchTitle" value={filters.searchTitle} onChange={handleFilterChange} fullWidth size="small" variant="outlined"/></Grid>
-                    <Grid item xs={6} sm={3} md={2} lg={2}><FormControl fullWidth size="small" variant="outlined"> <InputLabel>Статус</InputLabel><Select name="status" value={filters.status} label="Статус" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem><MenuItem value="Запланировано">Запланировано</MenuItem><MenuItem value="Проведено">Проведено</MenuItem><MenuItem value="Не проводилось (Отмена)">Отменено</MenuItem></Select></FormControl></Grid>
+                    {/* Фильтр по статусу (деактивирован, если showCompletedAndCancelled управляет им) */}
+                    {/* Если хотите оставить ручной выбор статуса И чекбокс, нужно будет усложнить логику */}
+                    <Grid item xs={6} sm={3} md={2} lg={2}>
+                         <FormControl fullWidth size="small" variant="outlined" disabled={!showCompletedAndCancelled}> {/* Деактивируем, если чекбокс не отмечен */}
+                            <InputLabel>Статус</InputLabel>
+                            <Select
+                                name="status"
+                                value={showCompletedAndCancelled ? filters.status : 'Запланировано'} // Если чекбокс не отмечен, показываем "Запланировано"
+                                label="Статус"
+                                onChange={handleFilterChange}
+                            >
+                                <MenuItem value=""><em>Все</em></MenuItem>
+                                <MenuItem value="Запланировано">Запланировано</MenuItem>
+                                <MenuItem value="Проведено">Проведено</MenuItem>
+                                <MenuItem value="Не проводилось (Отмена)">Отменено</MenuItem>
+                             </Select>
+                        </FormControl>
+                     </Grid>
                     <Grid item xs={6} sm={3} md={2} lg={2}><DatePicker label="Дата начала с" views={['year', 'month', 'day']} value={filters.startDate} onChange={(date) => handleDateFilterChange('startDate', date)} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
                     <Grid item xs={6} sm={3} md={2} lg={2}><DatePicker label="Дата начала по" views={['year', 'month', 'day']} value={filters.endDate} onChange={(date) => handleDateFilterChange('endDate', date)} minDate={filters.startDate || undefined} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
                     <Grid item xs={6} sm={3} md={2} lg={3}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Направление</InputLabel><Select name="directionId" value={filters.directionId} label="Направление" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
                     <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Уровень</InputLabel><Select name="levelId" value={filters.levelId} label="Уровень" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
                     <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Формат</InputLabel><Select name="formatId" value={filters.formatId} label="Формат" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select></FormControl></Grid>
-                    <Grid item xs={12} sm={3} md={'auto'} sx={{ display: 'flex', gap: 1 }}><Button variant="contained" onClick={handleApplyFilters} size="small" startIcon={<FilterListIcon/>} disabled={loading}> Применить </Button><Button variant="outlined" onClick={handleResetFilters} size="small" startIcon={<ClearAllIcon/>} disabled={loading}> Сбросить </Button></Grid>
-                 </Grid>
+                    {/* Чекбокс "Показать завершенные и отмененные" */}
+                    <Grid item xs={12} sm={6} md={3} lg={2}>
+                        <FormControlLabel
+                            control={
+                                <Checkbox
+                                    checked={showCompletedAndCancelled}
+                                    onChange={handleShowCompletedChange}
+                                    name="showCompletedAndCancelled"
+                                    size="small"
+                                />
+                            }
+                            label="Показать заверш./отменен."
+                        />
+                    </Grid>
+                     <Grid item xs={12} sm={6} md={'auto'} sx={{ display: 'flex', gap: 1 }}>
+                         <Button variant="contained" onClick={handleApplyFilters} size="small" startIcon={<FilterListIcon/>} disabled={loading}> Применить </Button>
+                         <Button variant="outlined" onClick={handleResetFilters} size="small" startIcon={<ClearAllIcon/>} disabled={loading}> Сбросить </Button>
+                     </Grid>
+                </Grid>
             </Paper>
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

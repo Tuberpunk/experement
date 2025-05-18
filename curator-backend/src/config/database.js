@@ -1,51 +1,53 @@
-const { Sequelize } = require('sequelize');
-// require('dotenv').config(); // .env нужен в основном для локальной разработки, Render использует свои переменные окружения
+    // Полный путь: src/config/database.js
+    const { Sequelize } = require('sequelize');
+    // require('dotenv').config(); // Загружается в server.js или при запуске тестов
 
-// Проверяем, есть ли DATABASE_URL
-if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL environment variable is not set.');
-}
+    let connectionUrl;
+    let enableSsl = false; // Флаг для SSL, по умолчанию выключен для локальной разработки/тестов
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-    dialect: 'postgres',
-    protocol: 'postgres', // Явно указываем протокол
-    logging: false, // Отключить логирование SQL (или настроить по желанию)
-    /*
-    dialectOptions: {
-        ssl: {
-            require: true, // Часто требуется для подключения к БД на Render
-            rejectUnauthorized: false // Может понадобиться, если Render использует самоподписанные сертификаты (проверьте документацию Render)
+    // Логика определения URL подключения
+    if (process.env.NODE_ENV === 'test') {
+        console.log('INFO: Using TEST database URL (DATABASE_URL_TEST).');
+        connectionUrl = process.env.DATABASE_URL_TEST;
+        if (!connectionUrl) {
+            // Эта ошибка указывает, что переменная для тестовой БД не задана
+            throw new Error('DATABASE_URL_TEST environment variable is not set for test environment.');
         }
-    },
-    */
-    define: {
-        timestamps: true,
-        underscored: true,
+    } else {
+        // Для разработки или продакшена (если Render/Heroku устанавливают DATABASE_URL)
+        console.log('INFO: Using REGULAR database URL (DATABASE_URL).');
+        connectionUrl = process.env.DATABASE_URL;
+        if (!connectionUrl) {
+            throw new Error('DATABASE_URL environment variable is not set.');
+        }
+        // SSL обычно нужен для продакшн БД в облаке
+        if (process.env.NODE_ENV === 'production' && connectionUrl.includes('render.com')) { // Пример для Render
+             console.log('INFO: Enabling SSL for production database on Render.');
+             enableSsl = true;
+        }
     }
-});
 
-module.exports = sequelize;
-
-
-
-/*
-const { Sequelize } = require('sequelize');
-require('dotenv').config();
-
-const sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
-    process.env.DB_PASS,
-    {
-        host: process.env.DB_HOST,
+    const sequelizeOptions = {
         dialect: 'postgres',
-        logging: false, // Отключить логирование SQL в консоль (или настроить)
+        protocol: 'postgres',
+        logging: process.env.NODE_ENV === 'test' ? false : (msg) => console.log(`[SEQUELIZE] ${msg}`), // Отключаем логи SQL в тестах
         define: {
-            timestamps: true, // Добавлять createdAt, updatedAt
-            underscored: true, // Использовать snake_case для авто-генерируемых полей (foreign keys)
+            timestamps: true,
+            underscored: true,
         }
-    }
-);
+    };
 
-module.exports = sequelize;
-*/
+    if (enableSsl) {
+        sequelizeOptions.dialectOptions = {
+            ssl: {
+                require: true,
+                rejectUnauthorized: false // Для Render может потребоваться
+            }
+        };
+    }
+
+    const sequelize = new Sequelize(connectionUrl, sequelizeOptions);
+    logging: console.log,
+    
+    module.exports = sequelize;
+    
