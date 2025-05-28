@@ -40,18 +40,45 @@ import { ru } from 'date-fns/locale';
 
 // Компонент для отображения одного блока статистики
 const StatCard = ({ title, value, icon, loading }) => (
-    <Paper elevation={2} sx={{ p: 2, display: 'flex', alignItems: 'center', height: '100%' }}>
-        {icon && <Box sx={{ mr: 2, color: 'primary.main' }}>{React.cloneElement(icon, { fontSize: 'large' })}</Box>}
-        <Box>
-            <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+    <Paper 
+        elevation={2} 
+        sx={{ 
+            p: 1.25, // Компактные отступы
+            display: 'flex', 
+            alignItems: 'center', 
+            height: '50%',
+            minHeight: '65px' // Минимальная высота
+        }}
+    >
+        {icon && (
+            <Box sx={{ mr: 1.5, color: 'primary.main', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                {React.cloneElement(icon, { fontSize: 'large' })} 
+            </Box>
+        )}
+        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+            <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}
+            >
                 {title}
             </Typography>
-            <Typography variant="h5" component="div">
-                {loading ? <CircularProgress size={24} /> : value}
+            <Typography 
+                variant="h6" 
+                component="div"
+                sx={{ 
+                    whiteSpace: 'nowrap', 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', // Обрезаем длинное значение
+                    lineHeight: 1.2 
+                }}
+            >
+                {loading ? <CircularProgress size={20} /> : value}
             </Typography>
         </Box>
     </Paper>
 );
+
 // НОВЫЙ Компонент для отображения статистики по категориям
 const CategoryStatCard = ({ title, data, itemNameKey, itemCountKey, icon, loading }) => (
     <Grid item xs={30} sm={30} md={4
@@ -385,41 +412,44 @@ const fetchStatistics = useCallback(async () => {
 
             {/* Секция Статистики */}
             <Box sx={{ mb: 3 }}>
-                <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
-                    Сводная статистика
-                </Typography>
-                {statsError && <Alert severity="error" sx={{ mb: 2 }}>{statsError}</Alert>}
-                
-                {/* Основные карточки статистики */}
-                <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} loading={loadingStats} />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <StatCard title="Уникальных участников" value={statistics?.totalUniqueParticipants ?? '...'} icon={<PeopleAltIcon />} loading={loadingStats}/>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <StatCard title="Отчетов в этом месяце" value={statistics?.reportsThisMonth ?? '...'} icon={<EventNoteIcon />} loading={loadingStats}/>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<BarChartIcon />} loading={loadingStats}/>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3} lg={2}>
-                        <StatCard title="Иностранные участники (всего)" value={statistics?.totalForeignerParticipants ?? '...'} icon={<PublicIcon />} loading={loadingStats}/>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3} lg={2}>
-                        <StatCard title="Несовершеннолетние (всего)" value={statistics?.totalMinorParticipants ?? '...'} icon={<ChildCareIcon />} loading={loadingStats}/>
-                    </Grid>
-                </Grid>
-                <Grid item xs={12} sm={6} md={4} lg={2}>
+                    <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
+                        Сводная статистика
+                    </Typography>
+                    {statsError && <Alert severity="error" sx={{ mb: 2 }}>{statsError}</Alert>}
+                    
+                    <Grid container spacing={1.5} sx={{ mb: 3 }}> {/* Уменьшен spacing */}
+                        {/* Основные 9 StatCard: xs={12} sm={6} (2 в ряд на sm и выше) */}
+                        <Grid item xs={12} sm={6}> 
+                            <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} loading={loadingStats} />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Уникальных участников (в отчетах)" value={statistics?.totalUniqueParticipants ?? '...'} icon={<PeopleAltIcon />} loading={loadingStats}/>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Всего участий студентов (в отчетах)" value={statistics?.totalReportParticipations ?? '...'} icon={<HowToRegIcon />} loading={loadingStats}/>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Отчетов в этом месяце" value={statistics?.reportsThisMonth ?? '...'} icon={<EventNoteIcon />} loading={loadingStats}/>
+                        </Grid>
+                        
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<BarChartIcon />} loading={loadingStats}/>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Иностранные участники" value={statistics?.totalForeignerParticipants ?? '...'} icon={<PublicIcon />} loading={loadingStats}/>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <StatCard title="Несовершеннолетние" value={statistics?.totalMinorParticipants ?? '...'} icon={<ChildCareIcon />} loading={loadingStats}/>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
                             <StatCard 
                                 title={getStudentGroupDisplayTitle()} 
                                 value={getStudentGroupDisplayValue()} 
                                 icon={<GroupsIcon />} 
-                                loading={loadingStats || authLoading} // Добавим authLoading, т.к. title зависит от user.role
+                                loading={loadingStats || authLoading} 
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6} md={4} lg={2}>
+                        <Grid item xs={12} sm={6}> 
                             <StatCard 
                                 title={user?.role === 'administrator' && selectedCuratorId ? "Студентов у куратора" : (user?.role === 'curator' ? "Моих студентов" : "Всего студентов")} 
                                 value={statistics?.totalStudentsInFilteredGroups ?? '...'} 
@@ -427,38 +457,26 @@ const fetchStatistics = useCallback(async () => {
                                 loading={loadingStats} 
                             />
                         </Grid>
-                {/* Новая статистика по категориям */}
-                <Typography variant="h6" gutterBottom component="div" sx={{ mt: 2, mb: 1 }}>
-                    Детализация по мероприятиям
-                </Typography>
-                 <Grid container spacing={2}>
-                    <CategoryStatCard
-                        title="По Направлениям"
-                        data={statistics?.reportsByDirection}
-                        itemNameKey="directionName"
-                        itemCountKey="reportCount"
-                        icon={<CategoryIcon />}
-                        loading={loadingStats}
-                    />
-                    <CategoryStatCard
-                        title="По Уровням"
-                        data={statistics?.reportsByLevel}
-                        itemNameKey="levelName"
-                        itemCountKey="reportCount"
-                        icon={<CategoryIcon />}
-                        loading={loadingStats}
-                    />
-                    <CategoryStatCard
-                        title="По Форматам"
-                        data={statistics?.reportsByFormat}
-                        itemNameKey="formatName"
-                        itemCountKey="reportCount"
-                        icon={<CategoryIcon />}
-                        loading={loadingStats}
-                    />
-                </Grid>
-            </Box>
-            <Divider sx={{ mb: 3 }} />
+                    </Grid>
+
+                    {/* Детализация по категориям мероприятий */}
+                    <Typography variant="h6" gutterBottom component="div" sx={{ mt: 3, mb: 1 }}>
+                        Детализация по мероприятиям
+                    </Typography>
+                     <Grid container spacing={1.5}> {/* Уменьшен spacing */}
+                        {/* CategoryStatCard: xs={12} sm={6} md={4} (на md и выше - 3 в ряд) */}
+                        <Grid item xs={12} sm={6} md={4}>
+                            <CategoryStatCard title="По Направлениям" data={statistics?.reportsByDirection} itemNameKey="directionName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <CategoryStatCard title="По Уровням" data={statistics?.reportsByLevel} itemNameKey="levelName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <CategoryStatCard title="По Форматам" data={statistics?.reportsByFormat} itemNameKey="formatName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
+                        </Grid>
+                    </Grid>
+                </Box>
+                <Divider sx={{ mb: 3 }} />
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             {loading && !statsError ? (
