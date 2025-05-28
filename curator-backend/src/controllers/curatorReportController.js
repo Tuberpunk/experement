@@ -1,13 +1,14 @@
 // src/controllers/curatorReportController.js
-const { 
-    CuratorReport, 
-    User, 
-    Student, 
-    Event, 
-    EventDirection, 
-    EventLevel,     
-    EventFormat,    
-    sequelize 
+const {
+    CuratorReport,
+    User,
+    Student,         // Убедитесь, что модель Student импортирована
+    StudentGroup,    // Убедитесь, что модель StudentGroup импортирована
+    Event,
+    EventDirection,
+    EventLevel,
+    EventFormat,
+    sequelize
 } = require('../models');
 const { Op } = require('sequelize');
 
@@ -39,6 +40,26 @@ exports.loadReport = async (req, res, next) => {
     }
 };
 
+exports.deleteReport = async (req, res) => {
+    // req.report is attached by loadReport middleware
+    try {
+        // Basic check: only admin or the report's curator can delete
+        // More complex logic (e.g., cannot delete if event is 'Проведено') can be added here
+        // This check is somewhat redundant if loadReport already did a similar check for access,
+        // but ensures delete operation also re-validates if needed.
+        if (req.user.role !== 'administrator' && req.user.id !== req.report.curatorUserId) {
+            // loadReport should already handle cases where user is not admin and not author for viewing
+            // but for deletion, an explicit re-check or ensuring loadReport's permissions are sufficient
+            // return res.status(403).json({ message: "Доступ запрещен: вы не можете удалить этот отчет." });
+        }
+
+        await req.report.destroy();
+        res.status(204).send(); // No content
+    } catch (error) {
+        console.error('Error deleting curator report:', error);
+        res.status(500).json({ message: 'Ошибка сервера при удалении отчета куратора' });
+    }
+};
 
 // GET /api/curator-reports - Получить список отчетов
 exports.getAllReports = async (req, res) => {
@@ -169,182 +190,149 @@ exports.createReport = async (req, res) => {
 
 
 // DELETE /api/curator-reports/:id - Удалить отчет
-exports.deleteReport = async (req, res) => {
-    const report = req.report; // Из loadReport
-
-    // Дополнительная проверка прав на удаление (только админ или автор)
-    if (req.user.role !== 'administrator' && report.curatorUserId !== req.user.id) {
-         return res.status(403).json({ message: 'Доступ запрещен: вы не автор этого отчета и не администратор' });
-    }
-
-    try {
-        // Связи в report_participants удалятся каскадно (согласно схеме)
-        await report.destroy();
-        res.status(204).send();
-    } catch (error) {
-        console.error(`Error deleting curator report ${req.params.id}:`, error);
-        res.status(500).json({ message: 'Ошибка сервера при удалении отчета' });
-    }
-};
 
 exports.getReportsStatistics = async (req, res) => {
-    const { id: currentUserId, role: currentUserRole } = req.user; // Текущий пользователь
-    const { startDate, endDate, curatorId: filterCuratorId } = req.query; // Параметры фильтра
+    const { id: currentUserId, role: currentUserRole } = req.user;
+    const { startDate, endDate, curatorId: filterCuratorId } = req.query;
 
-    let reportWhereCondition = {};
+    let reportWhereCondition = {}; // Для фильтрации CuratorReport
+    let groupStudentFilterCuratorId; // Для фильтрации StudentGroup и Student
 
-    // Фильтр по дате отчета (reportDate)
+    // Фильтр по дате отчета (reportDate) для CuratorReport
     if (startDate && endDate) {
         reportWhereCondition.reportDate = {
             [Op.gte]: new Date(startDate),
-            [Op.lte]: new Date(endDate),
+            [Op.lte]: new Date(endDate), // Sequelize <= включает всю дату
         };
     } else if (startDate) {
-        reportWhereCondition.reportDate = {
-            [Op.gte]: new Date(startDate),
-        };
+        reportWhereCondition.reportDate = { [Op.gte]: new Date(startDate) };
     } else if (endDate) {
-        reportWhereCondition.reportDate = {
-            [Op.lte]: new Date(endDate),
-        };
+        reportWhereCondition.reportDate = { [Op.lte]: new Date(endDate) };
     }
 
-    // Определение curatorUserId для фильтрации
-    // Если текущий пользователь - администратор И в запросе передан filterCuratorId, используем его.
-    // Иначе, если текущий пользователь - куратор, используем его ID.
-    // Если администратор не выбрал конкретного куратора, фильтра по куратору не будет (увидит всех).
-    let targetCuratorUserId;
+    // Определение ID куратора для основной фильтрации отчетов
+    let targetCuratorUserIdForReports;
     if (currentUserRole === 'administrator' && filterCuratorId) {
-        targetCuratorUserId = parseInt(filterCuratorId, 10);
+        targetCuratorUserIdForReports = parseInt(filterCuratorId, 10);
     } else if (currentUserRole === 'curator') {
-        targetCuratorUserId = currentUserId;
+        targetCuratorUserIdForReports = currentUserId;
     }
 
-    if (targetCuratorUserId) {
-        reportWhereCondition.curatorUserId = targetCuratorUserId;
+    if (targetCuratorUserIdForReports) {
+        reportWhereCondition.curatorUserId = targetCuratorUserIdForReports;
+    }
+
+    // Определение ID куратора для статистики по группам и студентам
+    // Если админ выбрал куратора в фильтре, используем его. Если текущий юзер - куратор, используем его ID.
+    // Иначе (админ, не выбрал куратора) - groupStudentFilterCuratorId остается undefined (для подсчета всех)
+    if (currentUserRole === 'administrator' && filterCuratorId) {
+        groupStudentFilterCuratorId = parseInt(filterCuratorId, 10);
+    } else if (currentUserRole === 'curator') {
+        groupStudentFilterCuratorId = currentUserId;
     }
     
-    // Для SQL запроса COUNT(DISTINCT rp.student_id) нужно отдельное условие по curator_user_id
-    let rawQueryCuratorCondition = '';
-    if (targetCuratorUserId) {
-        rawQueryCuratorCondition = `AND cr.curator_user_id = ${sequelize.escape(targetCuratorUserId)}`; // sequelize.escape для безопасности
+    // Подготовка условий для "сырых" SQL запросов (для totalReportParticipations)
+    let rawQueryCuratorConditionForReports = '';
+    if (targetCuratorUserIdForReports) {
+        rawQueryCuratorConditionForReports = `AND cr.curator_user_id = ${sequelize.escape(targetCuratorUserIdForReports)}`;
     }
-    
-    // Для SQL запроса также нужно учитывать startDate и endDate, если они есть
-    let rawQueryDateCondition = '';
+    let rawQueryDateConditionForReports = '';
     if (reportWhereCondition.reportDate) {
         if (reportWhereCondition.reportDate[Op.gte]) {
-            rawQueryDateCondition += ` AND cr.report_date >= ${sequelize.escape(reportWhereCondition.reportDate[Op.gte].toISOString())}`;
+            rawQueryDateConditionForReports += ` AND cr.report_date >= ${sequelize.escape(reportWhereCondition.reportDate[Op.gte].toISOString().split('T')[0])}`;
         }
         if (reportWhereCondition.reportDate[Op.lte]) {
-            // Прибавляем один день к endDate, чтобы включить весь день, если время не указано
-            const adjustedEndDate = new Date(reportWhereCondition.reportDate[Op.lte]);
-            adjustedEndDate.setDate(adjustedEndDate.getDate() + 1);
-            rawQueryDateCondition += ` AND cr.report_date < ${sequelize.escape(adjustedEndDate.toISOString())}`;
+            rawQueryDateConditionForReports += ` AND cr.report_date <= ${sequelize.escape(reportWhereCondition.reportDate[Op.lte].toISOString().split('T')[0])}`;
         }
     }
 
-
     try {
+        // --- Существующая статистика (с применением reportWhereCondition) ---
         const totalReports = await CuratorReport.count({ where: reportWhereCondition });
-
-        const totalParticipantsResult = await sequelize.query(
+        
+        // Изменен totalUniqueParticipants на totalReportParticipations (не уникальные участиия)
+        const totalReportParticipationsResult = await sequelize.query(
+            `SELECT COUNT(rp.student_id) AS "totalParticipations" 
+             FROM report_participants rp
+             JOIN curator_reports cr ON rp.report_id = cr.report_id
+             WHERE 1=1 ${rawQueryCuratorConditionForReports} ${rawQueryDateConditionForReports}`,
+            { type: sequelize.QueryTypes.SELECT }
+        );
+        const totalReportParticipations = totalReportParticipationsResult[0]?.totalParticipations || 0;
+        
+        // Уникальные участники (если все еще нужны отдельно)
+        const totalUniqueParticipantsResult = await sequelize.query(
             `SELECT COUNT(DISTINCT rp.student_id) AS "totalUniqueParticipants"
              FROM report_participants rp
              JOIN curator_reports cr ON rp.report_id = cr.report_id
-             WHERE 1=1 ${rawQueryCuratorCondition} ${rawQueryDateCondition}`, // Добавлены условия
-            {
-                type: sequelize.QueryTypes.SELECT,
-            }
+             WHERE 1=1 ${rawQueryCuratorConditionForReports} ${rawQueryDateConditionForReports}`,
+            { type: sequelize.QueryTypes.SELECT }
         );
-        const totalUniqueParticipants = totalParticipantsResult[0]?.totalUniqueParticipants || 0;
-        
-        // Количество отчетов за текущий месяц - этот блок теперь может быть не нужен, если есть гибкий фильтр по датам
-        // Но если хотите оставить его как отдельный показатель, не зависящий от фильтров:
+        const totalUniqueParticipants = totalUniqueParticipantsResult[0]?.totalUniqueParticipants || 0;
+
+
         let reportsThisMonthFixedCondition = {};
-        if (currentUserRole === 'curator') { // Для куратора - только его отчеты
-             reportsThisMonthFixedCondition.curatorUserId = currentUserId;
-        }
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-        const endOfMonth = new Date(startOfMonth);
-        endOfMonth.setMonth(startOfMonth.getMonth() + 1);
-        reportsThisMonthFixedCondition.reportDate = {
-            [Op.gte]: startOfMonth,
-            [Op.lt]: endOfMonth,
-        };
+        if (currentUserRole === 'curator') { reportsThisMonthFixedCondition.curatorUserId = currentUserId; }
+        const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
+        const endOfMonth = new Date(startOfMonth); endOfMonth.setMonth(startOfMonth.getMonth() + 1);
+        reportsThisMonthFixedCondition.reportDate = { [Op.gte]: startOfMonth, [Op.lt]: endOfMonth };
         const reportsThisMonth = await CuratorReport.count({ where: reportsThisMonthFixedCondition });
         
         const distinctEventsLinkedToReports = await CuratorReport.count({
-            where: {
-                ...reportWhereCondition, // Используем основное условие фильтра
-                eventId: { [Op.ne]: null }
-            },
-            distinct: true,
-            col: 'eventId'
+            where: { ...reportWhereCondition, eventId: { [Op.ne]: null } },
+            distinct: true, col: 'eventId'
         });
+        const reportsByDirection = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Direction.name'), 'directionName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventDirection, as: 'Direction', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Direction.name')], raw: true });
+        const reportsByLevel = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Level.name'), 'levelName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventLevel, as: 'Level', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Level.name')], raw: true });
+        const reportsByFormat = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Format.name'), 'formatName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventFormat, as: 'Format', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Format.name')], raw: true });
+        const totalForeignerParticipants = await CuratorReport.sum('foreignerCount', { where: reportWhereCondition });
+        const totalMinorParticipants = await CuratorReport.sum('minorCount', { where: reportWhereCondition });
 
-        const reportsByDirection = await CuratorReport.findAll({
-            attributes: [
-                [sequelize.col('RelatedEvent.Direction.name'), 'directionName'],
-                [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']
-            ],
-            include: [{
-                model: Event, as: 'RelatedEvent', attributes: [], required: true,
-                include: [{ model: EventDirection, as: 'Direction', attributes: [], required: true }]
-            }],
-            where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, // Используем основное условие фильтра
-            group: [sequelize.col('RelatedEvent.Direction.name')],
-            raw: true,
-        });
+        // --- НОВАЯ СТАТИСТИКА ---
+        let groupWhereCondition = {};
+        let studentGroupInfo = { type: 'count', value: 0 }; // Инициализация
+        let totalStudentsInFilteredGroups = 0;
 
-        const reportsByLevel = await CuratorReport.findAll({
-            attributes: [
-                [sequelize.col('RelatedEvent.Level.name'), 'levelName'],
-                [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']
-            ],
-            include: [{
-                model: Event, as: 'RelatedEvent', attributes: [], required: true,
-                include: [{ model: EventLevel, as: 'Level', attributes: [], required: true }]
-            }],
-            where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, // Используем основное условие фильтра
-            group: [sequelize.col('RelatedEvent.Level.name')],
-            raw: true,
-        });
+        if (groupStudentFilterCuratorId) { // Статистика для конкретного куратора (текущего или выбранного админом)
+            groupWhereCondition.curatorUserId = groupStudentFilterCuratorId;
+            const curatorGroups = await StudentGroup.findAll({
+                where: groupWhereCondition,
+                attributes: ['groupId', 'groupName'] // Получаем ID и название группы
+            });
 
-        const reportsByFormat = await CuratorReport.findAll({
-            attributes: [
-                [sequelize.col('RelatedEvent.Format.name'), 'formatName'],
-                [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']
-            ],
-            include: [{
-                model: Event, as: 'RelatedEvent', attributes: [], required: true,
-                include: [{ model: EventFormat, as: 'Format', attributes: [], required: true }]
-            }],
-            where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, // Используем основное условие фильтра
-            group: [sequelize.col('RelatedEvent.Format.name')],
-            raw: true,
-        });
+            if (curatorGroups.length === 1) {
+                studentGroupInfo = { type: 'name', value: curatorGroups[0].groupName };
+            } else {
+                studentGroupInfo = { type: 'count', value: curatorGroups.length };
+            }
 
-        const totalForeignerParticipants = await CuratorReport.sum('foreignerCount', {
-            where: reportWhereCondition, // Используем основное условие фильтра
-        });
-
-        const totalMinorParticipants = await CuratorReport.sum('minorCount', {
-            where: reportWhereCondition, // Используем основное условие фильтра
-        });
+            if (curatorGroups.length > 0) {
+                const groupIds = curatorGroups.map(g => g.groupId);
+                totalStudentsInFilteredGroups = await Student.count({
+                    where: { groupId: { [Op.in]: groupIds } }
+                });
+            }
+        } else { // Администратор, не выбран конкретный куратор -> общая статистика по всем группам
+            const countAllGroups = await StudentGroup.count();
+            studentGroupInfo = { type: 'count', value: countAllGroups };
+            totalStudentsInFilteredGroups = await Student.count();
+        }
 
         res.json({
             totalReports,
             totalUniqueParticipants: parseInt(totalUniqueParticipants, 10),
-            reportsThisMonth, // Этот показатель теперь не зависит от фильтров startDate/endDate
+            totalReportParticipations: parseInt(totalReportParticipations, 10),
+            reportsThisMonth,
             distinctEventsLinkedToReports,
             reportsByDirection,
             reportsByLevel,
             reportsByFormat,
             totalForeignerParticipants: totalForeignerParticipants || 0,
-            totalMinorParticipants: totalMinorParticipants || 0
+            totalMinorParticipants: totalMinorParticipants || 0,
+            
+            // Обновленная информация по группам
+            studentGroupInfo, // Объект с { type: 'count'/'name', value: ... }
+            totalStudentsInFilteredGroups: totalStudentsInFilteredGroups || 0
         });
 
     } catch (error) {

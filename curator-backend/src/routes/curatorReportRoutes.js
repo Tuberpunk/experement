@@ -16,6 +16,14 @@ router.post('/', authenticateToken, reportController.createReport);
 // Получение одного (права проверяются в loadReport)
 router.get('/:id', authenticateToken, reportController.loadReport, reportController.getReportById);
 
+console.log('Проверка типов обработчиков для DELETE /:id');
+console.log('typeof authenticateToken:', typeof authenticateToken);
+console.log('typeof reportController:', typeof reportController);
+if (reportController) {
+    console.log('typeof reportController.loadReport:', typeof reportController.loadReport);
+    console.log('typeof reportController.deleteReport:', typeof reportController.deleteReport);
+}
+
 // Удаление (права проверяются в deleteReport)
 router.delete('/:id', authenticateToken, reportController.loadReport, reportController.deleteReport);
 

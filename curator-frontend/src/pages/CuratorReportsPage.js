@@ -22,6 +22,9 @@ import BarChartIcon from '@mui/icons-material/BarChart'; // Еще одна ик
 import PublicIcon from '@mui/icons-material/Public'; // Иконка для иностранных участников
 import ChildCareIcon from '@mui/icons-material/ChildCare';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import GroupIcon from '@mui/icons-material/Group'; // Для общего числа студентов
+import GroupsIcon from '@mui/icons-material/Groups'; // Для общего числа групп
+import HowToRegIcon from '@mui/icons-material/HowToReg';
 
 // Контекст и API
 import { useAuth } from '../contexts/AuthContext';
@@ -85,8 +88,10 @@ const CategoryStatCard = ({ title, data, itemNameKey, itemCountKey, icon, loadin
     </Grid>
 );
 
+
+
 function CuratorReportsPage() {
-    const { user } = useAuth(); // Получаем текущего пользователя
+    const { user, loading: authLoading } = useAuth(); // Получаем текущего пользователя
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true); // Для списка отчетов
     const [loadingStats, setLoadingStats] = useState(true); // Для статистики
@@ -138,6 +143,45 @@ useEffect(() => {
         fetchCurators();
     }
 }, [user?.role, setSnackbar]);
+
+const getStudentGroupDisplayValue = () => {
+        if (loadingStats || !statistics || !statistics.studentGroupInfo) {
+            return '...';
+        }
+        const { type, value } = statistics.studentGroupInfo;
+        if (type === 'name') {
+            return value; // Просто возвращаем название группы
+        }
+        // Для type === 'count'
+        if (user?.role === 'administrator' && selectedCuratorId) {
+             return `${value}`; // Просто число, заголовок карточки уточнит контекст
+        }
+        if (user?.role === 'curator') {
+            return `${value}`; // Просто число, заголовок карточки уточнит контекст
+        }
+        // Админ смотрит всех
+        return `${value}`; // Просто число
+    };
+
+    const getStudentGroupDisplayTitle = () => {
+        if (authLoading || !statistics || !statistics.studentGroupInfo) {
+            return "Группы"; // Заголовок по умолчанию или во время загрузки
+        }
+        const { type } = statistics.studentGroupInfo;
+
+        if (type === 'name') {
+            return "Моя группа"; // Если отображается имя, то это одна группа куратора
+        }
+
+        // Для type === 'count'
+        if (user?.role === 'administrator' && selectedCuratorId) {
+            return "Групп у куратора";
+        }
+        if (user?.role === 'curator') {
+            return "Моих групп";
+        }
+        return "Всего групп"; // Админ смотрит всех
+    };
 
     // Функция загрузки статистики
 const fetchStatistics = useCallback(async () => {
@@ -367,7 +411,22 @@ const fetchStatistics = useCallback(async () => {
                         <StatCard title="Несовершеннолетние (всего)" value={statistics?.totalMinorParticipants ?? '...'} icon={<ChildCareIcon />} loading={loadingStats}/>
                     </Grid>
                 </Grid>
-
+                <Grid item xs={12} sm={6} md={4} lg={2}>
+                            <StatCard 
+                                title={getStudentGroupDisplayTitle()} 
+                                value={getStudentGroupDisplayValue()} 
+                                icon={<GroupsIcon />} 
+                                loading={loadingStats || authLoading} // Добавим authLoading, т.к. title зависит от user.role
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4} lg={2}>
+                            <StatCard 
+                                title={user?.role === 'administrator' && selectedCuratorId ? "Студентов у куратора" : (user?.role === 'curator' ? "Моих студентов" : "Всего студентов")} 
+                                value={statistics?.totalStudentsInFilteredGroups ?? '...'} 
+                                icon={<GroupIcon />} 
+                                loading={loadingStats} 
+                            />
+                        </Grid>
                 {/* Новая статистика по категориям */}
                 <Typography variant="h6" gutterBottom component="div" sx={{ mt: 2, mb: 1 }}>
                     Детализация по мероприятиям
