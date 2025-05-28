@@ -310,59 +310,51 @@ function EventsPage() {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="h4" component="h1"> Мероприятия </Typography>
                 <Box sx={{ display: 'flex', gap: 1}}>
-                    <Button variant="outlined" startIcon={isExporting ? <CircularProgress size={20} color="inherit"/> : <DownloadIcon />} onClick={handleExport} disabled={loading || isExporting || events.length === 0}> Экспорт в Excel </Button>
+                    <Button variant="outlined" startIcon={isExporting ? <CircularProgress size={20} color="inherit"/> : <DownloadIcon />} onClick={handleExport} disabled={loading || isExporting || !events || events.length === 0}> Экспорт в Excel </Button>
                     <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/events/new"> Добавить мероприятие </Button>
                 </Box>
             </Box>
 
-             {/* Панель фильтров */}
-             <Paper sx={{ p: 2, mb: 3 }}>
+             {/* --- ПАНЕЛЬ ФИЛЬТРОВ --- */}
+            <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>Фильтры</Typography>
                 <Grid container spacing={2} alignItems="flex-end">
-                    <Grid item xs={12} sm={6} md={4} lg={3}><TextField label="Поиск по названию" name="searchTitle" value={filters.searchTitle} onChange={handleFilterChange} fullWidth size="small" variant="outlined"/></Grid>
-                    {/* Фильтр по статусу (деактивирован, если showCompletedAndCancelled управляет им) */}
-                    {/* Если хотите оставить ручной выбор статуса И чекбокс, нужно будет усложнить логику */}
-                    <Grid item xs={6} sm={3} md={2} lg={2}>
-                         <FormControl fullWidth size="small" variant="outlined" disabled={!showCompletedAndCancelled}> {/* Деактивируем, если чекбокс не отмечен */}
+                    {/* Ряд 1 */}
+                    <Grid item xs={12} sm={6} md={4}><TextField label="Поиск по названию" name="searchTitle" value={filters.searchTitle} onChange={handleFilterChange} fullWidth size="small" variant="outlined"/></Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                         <FormControl fullWidth size="small" variant="outlined" disabled={!showCompletedAndCancelled}>
                             <InputLabel>Статус</InputLabel>
-                            <Select
-                                name="status"
-                                value={showCompletedAndCancelled ? filters.status : 'Запланировано'} // Если чекбокс не отмечен, показываем "Запланировано"
-                                label="Статус"
-                                onChange={handleFilterChange}
-                            >
-                                <MenuItem value=""><em>Все</em></MenuItem>
+                            <Select name="status" value={showCompletedAndCancelled ? filters.status : 'Запланировано'} label="Статус" onChange={handleFilterChange}>
+                                <MenuItem value=""><em>Все статусы</em></MenuItem>
                                 <MenuItem value="Запланировано">Запланировано</MenuItem>
                                 <MenuItem value="Проведено">Проведено</MenuItem>
                                 <MenuItem value="Не проводилось (Отмена)">Отменено</MenuItem>
                              </Select>
                         </FormControl>
                      </Grid>
-                    <Grid item xs={6} sm={3} md={2} lg={2}><DatePicker label="Дата начала с" views={['year', 'month', 'day']} value={filters.startDate} onChange={(date) => handleDateFilterChange('startDate', date)} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
-                    <Grid item xs={6} sm={3} md={2} lg={2}><DatePicker label="Дата начала по" views={['year', 'month', 'day']} value={filters.endDate} onChange={(date) => handleDateFilterChange('endDate', date)} minDate={filters.startDate || undefined} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
-                    <Grid item xs={6} sm={3} md={2} lg={3}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Направление</InputLabel><Select name="directionId" value={filters.directionId} label="Направление" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
-                    <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Уровень</InputLabel><Select name="levelId" value={filters.levelId} label="Уровень" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
-                    <Grid item xs={6} sm={3} md={2}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Формат</InputLabel><Select name="formatId" value={filters.formatId} label="Формат" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select></FormControl></Grid>
-                    {/* Чекбокс "Показать завершенные и отмененные" */}
-                    <Grid item xs={12} sm={6} md={3} lg={2}>
+                    <Grid item xs={12} sm={6} md={3}><DatePicker label="Дата начала с" views={['year', 'month', 'day']} value={filters.startDate} onChange={(date) => handleDateFilterChange('startDate', date)} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><DatePicker label="Дата начала по" views={['year', 'month', 'day']} value={filters.endDate} onChange={(date) => handleDateFilterChange('endDate', date)} minDate={filters.startDate || undefined} slotProps={{ textField: { size: 'small', fullWidth: true, variant: 'outlined', InputLabelProps: { shrink: true } } }} /></Grid>
+                    
+                    {/* Ряд 2 */}
+                    <Grid item xs={12} sm={6} md={4}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Направление</InputLabel><Select name="directionId" value={filters.directionId} label="Направление" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.directions.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
+                    <Grid item xs={12} sm={6} md={4}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Уровень</InputLabel><Select name="levelId" value={filters.levelId} label="Уровень" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.levels.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
+                    <Grid item xs={12} sm={6} md={4}><FormControl fullWidth size="small" variant="outlined" disabled={loadingLookups}><InputLabel>Формат</InputLabel><Select name="formatId" value={filters.formatId} label="Формат" onChange={handleFilterChange}><MenuItem value=""><em>Все</em></MenuItem>{lookups.formats.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}</Select></FormControl></Grid>
+                    
+                    {/* Ряд 3 - Чекбокс и кнопки */}
+                    <Grid item xs={12} sm={6} md={8}> {/* Увеличил md для чекбокса */}
                         <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={showCompletedAndCancelled}
-                                    onChange={handleShowCompletedChange}
-                                    name="showCompletedAndCancelled"
-                                    size="small"
-                                />
-                            }
-                            label="Показать заверш./отменен."
+                            control={ <Checkbox checked={showCompletedAndCancelled} onChange={handleShowCompletedChange} name="showCompletedAndCancelled" size="small" /> }
+                            label="Показать завершенные и отмененные"
+                            sx={{pt:1}} // Небольшой отступ сверху для выравнивания с кнопками
                         />
                     </Grid>
-                     <Grid item xs={12} sm={6} md={'auto'} sx={{ display: 'flex', gap: 1 }}>
-                         <Button variant="contained" onClick={handleApplyFilters} size="small" startIcon={<FilterListIcon/>} disabled={loading}> Применить </Button>
-                         <Button variant="outlined" onClick={handleResetFilters} size="small" startIcon={<ClearAllIcon/>} disabled={loading}> Сбросить </Button>
+                    <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex', gap: 1, justifyContent: {xs: 'flex-start', sm: 'flex-end'} }}> {/* Кнопки вправо на sm+ */}
+                         <Button variant="contained" onClick={handleApplyFilters} size="medium" startIcon={<FilterListIcon/>} disabled={loading}> Применить </Button>
+                         <Button variant="outlined" onClick={handleResetFilters} size="medium" startIcon={<ClearAllIcon/>} disabled={loading}> Сбросить </Button>
                      </Grid>
                 </Grid>
             </Paper>
+            {/* --- КОНЕЦ ПАНЕЛИ ФИЛЬТРОВ --- */}
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             {loading && <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>}
@@ -422,87 +414,19 @@ function EventsPage() {
              {/* Меню действий */}
              <Menu id="actions-menu" anchorEl={anchorEl} open={openMenu && !!currentEventForMenu} onClose={handleMenuClose} MenuListProps={{ 'aria-labelledby': 'basic-button' }} {...(currentEventForMenu && { PaperProps: { style: { minWidth: '220px' } } })}>
                 {currentEventForMenu && [
-                        // Просмотр (дублирует клик по названию, но можно оставить)
-                        <MenuItem key="view" component={RouterLink} to={`/events/${currentEventForMenu.eventId}`} onClick={handleMenuClose}>
-                            <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon>
-                            <ListItemText>Просмотреть детали</ListItemText>
-                        </MenuItem>,
-
-                        // Редактировать (виден админу или создателю)
-                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
-                             <MenuItem key="edit" component={RouterLink} to={`/events/${currentEventForMenu.eventId}/edit`} onClick={handleMenuClose}>
-                                 <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-                                 <ListItemText>Редактировать</ListItemText>
-                             </MenuItem>
-                         ),
-
-                        // --- НОВЫЙ ПУНКТ: Завершить/Отчитаться ---
-                        currentEventForMenu.status === 'Запланировано' &&
-                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
-                            <MenuItem
-                                key="complete_report"
-                                onClick={() => {
-                                    handleMenuClose();
-                                    navigate(`/events/${currentEventForMenu.eventId}/edit`, { // Направляем на форму редактирования
-                                        state: {
-                                            isCompleting: true, // Флаг режима завершения
-                                            eventId: currentEventForMenu.eventId, // Передаем ID
-                                            // Можно передать и другие данные, если нужно для предзаполнения
-                                            // eventTitle: currentEventForMenu.title,
-                                            // eventStartDate: currentEventForMenu.startDate
-                                        }
-                                    });
-                                }}
-                            >
-                                <ListItemIcon><AssignmentTurnedInIcon fontSize="small" color="primary" /></ListItemIcon>
-                                <ListItemText>Завершить / Отчитаться</ListItemText>
-                            </MenuItem>
-                        ),
-                        // ------------------------------------
-
-                        // Пункт "Проведено" (виден админу или создателю, если статус "Запланировано")
-                        // Этот пункт можно будет убрать, если "Завершить/Отчитаться" его полностью заменяет
-                        // или оставить как быстрое действие без перехода на форму редактирования.
-                        // Пока оставим, но он будет дублировать часть логики "Завершить/Отчитаться".
-                        currentEventForMenu.status === 'Запланировано' && (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && (
-                             <MenuItem key="conducted" onClick={() => handleStatusChange('Проведено')}>
-                                  <ListItemIcon><CheckCircleOutlineIcon fontSize="small" color="success" /></ListItemIcon>
-                                 <ListItemText>Отметить "Проведено"</ListItemText>
-                             </MenuItem>
-                         ),
-
-                         // Пункт "Отменено" (виден только админу, если статус не "Отменено")
-                         user?.role === 'administrator' && currentEventForMenu.status !== 'Не проводилось (Отмена)' && (
-                             <MenuItem key="canceled" onClick={() => handleStatusChange('Не проводилось (Отмена)')}>
-                                 <ListItemIcon><CancelOutlinedIcon fontSize="small" color="error" /></ListItemIcon>
-                                 <ListItemText>Отметить "Не проводилось (Отмена)"</ListItemText>
-                             </MenuItem>
-                         ),
-
-                          // Пункт "Запланировано" (виден только админу, если статус не "Запланировано")
-                         user?.role === 'administrator' && currentEventForMenu.status !== 'Запланировано' && (
-                             <MenuItem key="planned" onClick={() => handleStatusChange('Запланировано')}>
-                                  <ListItemIcon><ReplayIcon fontSize="small" /></ListItemIcon>
-                                 <ListItemText>Вернуть "Запланировано"</ListItemText>
-                             </MenuItem>
-                         ),
-
-                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && <Divider key="divider-delete"/>, // Убрал дублирующийся Divider
-
-                        // Пункт Удалить (виден только админу) - ИСПРАВЛЕНО
-                        (user?.role === 'administrator') && (
-                            <MenuItem key="delete" onClick={() => handleDeleteClick(currentEventForMenu)} sx={{ color: 'error.main' }}>
-                                <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-                                <ListItemText>Удалить</ListItemText>
-                            </MenuItem>
-                        )
+                        <MenuItem key="view" component={RouterLink} to={`/events/${currentEventForMenu.eventId}`} onClick={handleMenuClose}> <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon> <ListItemText>Просмотреть детали</ListItemText> </MenuItem>,
+                        (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && ( <MenuItem key="edit" component={RouterLink} to={`/events/${currentEventForMenu.eventId}/edit`} onClick={handleMenuClose}> <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon> <ListItemText>Редактировать</ListItemText> </MenuItem> ),
+                        currentEventForMenu.status === 'Запланировано' && (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && ( <MenuItem key="complete_report" onClick={() => { handleMenuClose(); navigate(`/events/${currentEventForMenu.eventId}/edit`, { state: { isCompleting: true, eventId: currentEventForMenu.eventId } }); }}> <ListItemIcon><AssignmentTurnedInIcon fontSize="small" color="primary" /></ListItemIcon> <ListItemText>Завершить / Отчитаться</ListItemText> </MenuItem> ),
+                        currentEventForMenu.status === 'Запланировано' && (user?.role === 'administrator' || user?.id === currentEventForMenu.createdByUserId) && ( <MenuItem key="conducted" onClick={() => handleStatusChange('Проведено')}> <ListItemIcon><CheckCircleOutlineIcon fontSize="small" color="success" /></ListItemIcon> <ListItemText>Отметить "Проведено" (быстро)</ListItemText> </MenuItem> ),
+                        user?.role === 'administrator' && currentEventForMenu.status !== 'Не проводилось (Отмена)' && ( <MenuItem key="canceled" onClick={() => handleStatusChange('Не проводилось (Отмена)')}> <ListItemIcon><CancelOutlinedIcon fontSize="small" color="error" /></ListItemIcon> <ListItemText>Отметить "Не проводилось (Отмена)"</ListItemText> </MenuItem> ),
+                        user?.role === 'administrator' && currentEventForMenu.status !== 'Запланировано' && ( <MenuItem key="planned" onClick={() => handleStatusChange('Запланировано')}> <ListItemIcon><ReplayIcon fontSize="small" /></ListItemIcon> <ListItemText>Вернуть "Запланировано"</ListItemText> </MenuItem> ),
+                        (user?.role === 'administrator') && <Divider key="divider-delete"/>,
+                        (user?.role === 'administrator') && ( <MenuItem key="delete" onClick={() => handleDeleteClick(currentEventForMenu)} sx={{ color: 'error.main' }}> <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon> <ListItemText>Удалить</ListItemText> </MenuItem> )
                     ].filter(Boolean)
                 }
             </Menu>
 
-             {/* Диалог удаления */}
              <ConfirmationDialog open={openDeleteDialog} onClose={handleCloseDeleteDialog} onConfirm={handleConfirmDelete} title="Удалить мероприятие?" message={`Вы уверены, что хотите удалить мероприятие "${eventToDelete?.title || ''}"?`} />
-             {/* Snackbar */}
              <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}><Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">{snackbar.message}</Alert></Snackbar>
          </Container>
     );

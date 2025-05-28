@@ -1,12 +1,8 @@
 // Полный путь: src/controllers/adminController.js
-const { Event, User, Role, sequelize } = require('../models'); // Необходимые модели
-const { Op } = require('sequelize');
+const { CuratorReport, User, sequelize, Role, Event } = require('../models');
+const { Op } = require('sequelize'); // <--- Первое объявление Op
+const dayjs = require('dayjs');
 
-/**
- * POST /api/admin/assign-event
- * Назначить (создать) мероприятие для одного или нескольких кураторов.
- * Доступно только администраторам.
- */
 exports.assignEventToCurators = async (req, res) => {
     // Получаем ID админа, который выполняет действие
     const assignerAdminId = req.user.id;
@@ -122,5 +118,86 @@ exports.assignEventToCurators = async (req, res) => {
         if (transaction) await transaction.rollback();
         console.error('Error assigning event:', error);
         res.status(500).json({ message: 'Ошибка сервера при назначении мероприятия' });
+    }
+};
+
+exports.getCuratorReportsSummary = async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const whereDateRange = {}; // Для фильтрации CuratorReport по дате
+
+    if (startDate) {
+        whereDateRange.reportDate = { [Op.gte]: dayjs(startDate).startOf('day').toDate() };
+    }
+    if (endDate) {
+        whereDateRange.reportDate = {
+            ...(whereDateRange.reportDate || {}),
+            [Op.lte]: dayjs(endDate).endOf('day').toDate()
+        };
+    }
+    console.log('[AdminController] Fetching curator reports summary with date range filter for CuratorReport:', whereDateRange);
+
+    try {
+        // 1. Общее количество отчетов
+        const totalReportsCount = await CuratorReport.count({
+            where: whereDateRange
+        });
+        console.log('[AdminController] totalReportsCount:', totalReportsCount);
+
+        // 2. Количество уникальных кураторов, подавших отчеты
+        const activeCuratorsResult = await CuratorReport.findAll({
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('curator_user_id'))), 'count']
+            ],
+            where: whereDateRange,
+            raw: true
+        });
+        const activeCuratorsCount = activeCuratorsResult[0] ? parseInt(activeCuratorsResult[0].count, 10) : 0;
+        console.log('[AdminController] activeCuratorsCount:', activeCuratorsCount);
+
+        // 3. Общее количество записей участников (суммарное по отчетам)
+        // Считаем напрямую из связующей таблицы, фильтруя по ID отчетов, подходящих под диапазон дат
+        const reportsInRange = await CuratorReport.findAll({
+            attributes: ['reportId'], // Нам нужны только ID отчетов
+            where: whereDateRange,
+            raw: true
+        });
+        const reportIdsInRange = reportsInRange.map(r => r.reportId);
+
+        let totalParticipantEntries = 0;
+        if (reportIdsInRange.length > 0) {
+            totalParticipantEntries = await sequelize.models.report_participants.count({
+                where: {
+                    report_id: { [Op.in]: reportIdsInRange } // Используем report_id, как в таблице
+                }
+            });
+        }
+        console.log('[AdminController] totalParticipantEntries:', totalParticipantEntries);
+
+
+        // 4. Количество отчетов, связанных с мероприятиями
+        // Используем Op.ne (not equal) для eventId, которое не равно null
+        const reportsWithEventsCount = await CuratorReport.count({
+            where: {
+                ...whereDateRange,
+                eventId: { [Op.ne]: null } // ИСПРАВЛЕНО: Используем Op.ne
+            }
+        });
+        console.log('[AdminController] reportsWithEventsCount:', reportsWithEventsCount);
+
+        const averageParticipantsPerReport = totalReportsCount > 0 ? parseFloat((totalParticipantEntries / totalReportsCount).toFixed(1)) : 0;
+        console.log('[AdminController] averageParticipantsPerReport:', averageParticipantsPerReport);
+
+        res.json({
+            totalReportsCount,
+            activeCuratorsCount,
+            totalParticipantEntries,
+            reportsWithEventsCount,
+            averageParticipantsPerReport,
+            filtersApplied: { startDate, endDate }
+        });
+
+    } catch (error) {
+        console.error('[AdminController] Error fetching curator reports summary:', error);
+        res.status(500).json({ message: 'Ошибка сервера при получении сводной статистики по отчетам кураторов (детали в логе сервера)' });
     }
 };

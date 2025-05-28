@@ -165,12 +165,11 @@ function MainLayout() {
             </Box>
             <Menu id="admin-menu" anchorEl={adminMenuAnchorEl} open={openAdminMenu} onClose={handleAdminMenuClose} MenuListProps={{ 'aria-labelledby': 'admin-menu-button' }} PaperProps={{ style: { minWidth: '230px' } }}>
                 <MenuItem onClick={() => {handleAdminMenuClose(); navigate('/admin/users');}}> <ListItemIcon><ManageAccountsIcon fontSize="small" /></ListItemIcon> <ListItemText>Управление пользователями</ListItemText> </MenuItem>
-                <MenuItem onClick={() => {handleAdminMenuClose(); navigate('/admin/tags');}}> <ListItemIcon><LabelIcon fontSize="small" /></ListItemIcon> <ListItemText>Управление тегами</ListItemText> </MenuItem>
                 <MenuItem onClick={() => {handleAdminMenuClose(); navigate('/admin/assign-event');}}> <ListItemIcon><AssignmentIndIcon fontSize="small" /></ListItemIcon> <ListItemText>Назначить событие</ListItemText> </MenuItem>
                 <MenuItem onClick={() => {handleAdminMenuClose(); navigate('/admin/lookups');}}> <ListItemIcon><DnsIcon fontSize="small" /></ListItemIcon> <ListItemText>Управление справочниками</ListItemText> </MenuItem>
             </Menu>
             <Container component="main" sx={{ flexGrow: 1, py: { xs: 2, sm: 3 } }}> <Outlet /> </Container>
-            <Box component="footer" sx={{ bgcolor: 'background.paper', p: 2, mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}> <Typography variant="body2" color="text.secondary" align="center"> © {new Date().getFullYear()} Ваш Университет. Все права защищены. </Typography> </Box>
+            <Box component="footer" sx={{ bgcolor: 'background.paper', p: 2, mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}> <Typography variant="body2" color="text.secondary" align="center"> © {new Date().getFullYear()} Все права защищены. </Typography> </Box>
         </Box>
     );
 }

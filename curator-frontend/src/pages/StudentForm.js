@@ -152,9 +152,6 @@ function StudentForm({ mode }) {
                 <Typography variant="h4" component="h1" gutterBottom>
                     {isEditMode ? 'Редактировать данные студента' : 'Добавить нового студента'}
                 </Typography>
-                <Typography variant="caption" color="error" component="div" sx={{mb: 2}}>
-                    НАДА ЕЩЕ ПОДУМАТЬ!
-                 </Typography>
 
                 {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
 
