@@ -3,57 +3,97 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
     Container, Typography, Button, Box, CircularProgress, Alert, Paper, IconButton, Tooltip,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
+    Grid, // Добавлен Grid для статистики
+    Snackbar, // Добавлен Snackbar
+    Divider // Добавлен Divider
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import AssessmentIcon from '@mui/icons-material/Assessment'; // Иконка для отчетов/статистики
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt'; // Иконка для участников
+import EventNoteIcon from '@mui/icons-material/EventNote'; // Иконка для мероприятий
+
 // Контекст и API
 import { useAuth } from '../contexts/AuthContext';
-import { getCuratorReports, deleteCuratorReport } from '../api/curatorReports'; // Путь к вашим API функциям
+import { getCuratorReports, deleteCuratorReport, getCuratorReportsStatistics } from '../api/curatorReports'; // Добавлена getCuratorReportsStatistics
 // Вспомогательные компоненты
 import ConfirmationDialog from '../components/ConfirmationDialog'; // Диалог подтверждения
 // Форматирование даты
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
+// Компонент для отображения одного блока статистики
+const StatCard = ({ title, value, icon, loading }) => (
+    <Paper elevation={2} sx={{ p: 2, display: 'flex', alignItems: 'center', height: '100%' }}>
+        {icon && <Box sx={{ mr: 2, color: 'primary.main' }}>{React.cloneElement(icon, { fontSize: 'large' })}</Box>}
+        <Box>
+            <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                {title}
+            </Typography>
+            <Typography variant="h5" component="div">
+                {loading ? <CircularProgress size={24} /> : value}
+            </Typography>
+        </Box>
+    </Paper>
+);
+
+
 function CuratorReportsPage() {
     const { user } = useAuth(); // Получаем текущего пользователя
     const [reports, setReports] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true); // Для списка отчетов
+    const [loadingStats, setLoadingStats] = useState(true); // Для статистики
     const [error, setError] = useState('');
-    // Состояние пагинации
+    const [statsError, setStatsError] = useState(''); // Отдельная ошибка для статистики
     const [page, setPage] = useState(0); // MUI пагинация с 0
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [totalItems, setTotalItems] = useState(0);
+    const [statistics, setStatistics] = useState(null); // Состояние для статистики
 
     // Состояние для диалога удаления
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [reportToDelete, setReportToDelete] = useState(null); // { id, title }
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
+
+    // Функция загрузки статистики
+    const fetchStatistics = useCallback(async () => {
+        setLoadingStats(true);
+        setStatsError('');
+        try {
+            const data = await getCuratorReportsStatistics();
+            setStatistics(data);
+        } catch (err) {
+            setStatsError(err.response?.data?.message || err.message || 'Не удалось загрузить статистику');
+            console.error("Fetch reports statistics error:", err);
+        } finally {
+            setLoadingStats(false);
+        }
+    }, []);
 
     // Функция загрузки отчетов
     const fetchReports = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            // Бэкенд сам фильтрует по роли/ID куратора
             const params = { page: page + 1, limit: rowsPerPage };
-            // TODO: Добавить передачу фильтров в params, если они будут
             const data = await getCuratorReports(params);
             setReports(data.reports || []);
             setTotalItems(data.totalItems || 0);
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Не удалось загрузить список отчетов');
-            console.error("Fetch curator reports error:", err);
+             setError(err.response?.data?.message || err.message || 'Не удалось загрузить список отчетов');
+             console.error("Fetch curator reports error:", err);
         } finally {
             setLoading(false);
         }
-    }, [page, rowsPerPage]); // Зависимости - пагинация
+    }, [page, rowsPerPage]);
 
-    // Загружаем отчеты при монтировании и изменении пагинации
     useEffect(() => {
         fetchReports();
-    }, [fetchReports]);
+        fetchStatistics();
+    }, [fetchReports, fetchStatistics]);
 
     // Обработчики пагинации
     const handleChangePage = (event, newPage) => {
@@ -62,7 +102,7 @@ function CuratorReportsPage() {
 
     const handleChangeRowsPerPage = (event) => {
         setRowsPerPage(parseInt(event.target.value, 10));
-        setPage(0); // Сброс на первую страницу при изменении лимита
+        setPage(0);
     };
 
     // Обработчики удаления
@@ -80,63 +120,87 @@ function CuratorReportsPage() {
         if (!reportToDelete) return;
         try {
             await deleteCuratorReport(reportToDelete.id);
-            // Обновляем список: можно либо вызвать fetchReports(),
-            // либо удалить локально, если записей немного
+            setSnackbar({ open: true, message: `Отчет "${reportToDelete.title}" удален`, severity: 'success' });
+            // Обновляем список:
+            const newTotalItems = totalItems - 1;
+            setTotalItems(newTotalItems);
             setReports(prev => prev.filter(r => r.reportId !== reportToDelete.id));
-            setTotalItems(prev => prev -1); // Уменьшаем общее кол-во
-            // Проверяем, не стала ли текущая страница пустой
-            if (reports.length === 1 && page > 0) {
-                 setPage(page - 1); // Переход на предыдущую страницу, если удалили последний элемент
+            const newTotalPages = Math.ceil(newTotalItems / rowsPerPage);
+            if (page > 0 && page >= newTotalPages) {
+                setPage(Math.max(0, newTotalPages - 1));
             }
-
             handleCloseDeleteDialog();
-            // Можно добавить Snackbar об успехе
         } catch (err) {
-             setError(err.response?.data?.message || err.message || 'Не удалось удалить отчет');
+             const message = err.response?.data?.message || err.message || 'Не удалось удалить отчет';
+             setSnackbar({ open: true, message: message, severity: 'error' });
              console.error("Delete report error:", err);
-             handleCloseDeleteDialog(); // Закрываем диалог даже при ошибке
+             handleCloseDeleteDialog();
         }
     };
 
+    const handleCloseSnackbar = useCallback((event, reason) => {
+        if (reason === 'clickaway') {
+            return;
+        }
+        setSnackbar(prev => ({ ...prev, open: false }));
+    }, []);
+
     return (
          <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
                 <Typography variant="h4" component="h1">
-                     {/* Заголовок зависит от роли */}
                      {user?.role === 'administrator' ? 'Отчеты Кураторов' : 'Мои Отчеты'}
                  </Typography>
-                 {/* Кнопка добавления отчета */}
-                 {(user?.role === 'curator' || user?.role === 'administrator') && ( // Показываем и куратору и админу
+                 {(user?.role === 'curator' || user?.role === 'administrator') && (
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}
                         component={RouterLink}
-                        to="/curator-reports/new" // Ссылка на форму создания
+                        to="/curator-reports/new"
                     >
                         Добавить отчет
                     </Button>
                  )}
             </Box>
 
-            {/* TODO: Добавить панель фильтров, если необходимо (по дате, куратору для админа) */}
+            {/* Секция Статистики */}
+            <Box sx={{ mb: 3 }}>
+                <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
+                    Сводная статистика
+                </Typography>
+                {statsError && <Alert severity="error" sx={{ mb: 2 }}>{statsError}</Alert>}
+                <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} loading={loadingStats} />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <StatCard title="Уникальных участников" value={statistics?.totalUniqueParticipants ?? '...'} icon={<PeopleAltIcon />} loading={loadingStats}/>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <StatCard title="Отчетов в этом месяце" value={statistics?.reportsThisMonth ?? '...'} icon={<EventNoteIcon />} loading={loadingStats}/>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<EventNoteIcon color="action"/>} loading={loadingStats}/>
+                    </Grid>
+                </Grid>
+            </Box>
+            <Divider sx={{ mb: 3 }} />
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-            {loading ? (
+            {loading && !statsError ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
-            ) : !reports.length ? (
+            ) : !reports.length && !loading ? (
                  <Typography sx={{ textAlign: 'center', p: 3 }}>
                      {user?.role === 'administrator' ? 'Отчеты еще не созданы.' : 'У вас пока нет отчетов.'}
                  </Typography>
             ) : (
                 <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                    <TableContainer sx={{ maxHeight: 650 }}> {/* Ограничиваем высоту для скролла */}
+                    <TableContainer sx={{ maxHeight: 650 }}>
                         <Table stickyHeader size="small">
                             <TableHead>
                                 <TableRow>
                                     <TableCell sx={{minWidth: 250}}>Название / Тема</TableCell>
                                     <TableCell>Дата проведения</TableCell>
-                                    {/* Показываем столбец "Куратор" только для админа */}
                                     {user?.role === 'administrator' && <TableCell>Куратор</TableCell>}
                                     <TableCell sx={{minWidth: 150}}>Место проведения</TableCell>
                                     <TableCell align="right">Действия</TableCell>
@@ -147,17 +211,14 @@ function CuratorReportsPage() {
                                     <TableRow hover key={report.reportId}>
                                         <TableCell sx={{maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                                             <Tooltip title={report.reportTitle}>
-                                                 {/* Делаем название ссылкой на детальную страницу */}
                                                  <RouterLink to={`/curator-reports/${report.reportId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                                                     {report.reportTitle}
                                                  </RouterLink>
                                             </Tooltip>
                                         </TableCell>
                                         <TableCell>
-                                            {/* Форматируем дату */}
                                             {report.reportDate ? format(new Date(report.reportDate), 'dd.MM.yyyy', { locale: ru }) : '-'}
                                         </TableCell>
-                                        {/* Отображаем куратора для админа */}
                                         {user?.role === 'administrator' && (
                                             <TableCell>{report.Curator?.fullName || 'N/A'}</TableCell>
                                         )}
@@ -165,13 +226,11 @@ function CuratorReportsPage() {
                                             {report.locationText || '-'}
                                          </TableCell>
                                         <TableCell align="right">
-                                            {/* Кнопка просмотра */}
                                             <Tooltip title="Просмотр отчета">
                                                 <IconButton size="small" component={RouterLink} to={`/curator-reports/${report.reportId}`}>
                                                     <VisibilityIcon />
                                                 </IconButton>
                                             </Tooltip>
-                                             {/* Кнопка удаления видна админу ИЛИ автору отчета */}
                                              {(user?.role === 'administrator' || user?.id === report.curatorUserId) && (
                                                 <Tooltip title="Удалить отчет">
                                                      <IconButton size="small" onClick={() => handleDeleteClick(report)} color="error" sx={{ ml: 1 }}>
@@ -179,15 +238,12 @@ function CuratorReportsPage() {
                                                      </IconButton>
                                                  </Tooltip>
                                             )}
-                                             {/* TODO: Добавить кнопку редактирования (ссылка на /curator-reports/:id/edit), если нужно */}
-                                             {/* {(user?.role === 'administrator' || user?.id === report.curatorUserId) && ( <Tooltip title="Редактировать"><IconButton>...</IconButton></Tooltip> )} */}
                                         </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                     </TableContainer>
-                    {/* Пагинация */}
                     <TablePagination
                         rowsPerPageOptions={[10, 25, 50]}
                         component="div"
@@ -202,7 +258,6 @@ function CuratorReportsPage() {
                 </Paper>
             )}
 
-             {/* Диалог подтверждения удаления */}
              <ConfirmationDialog
                 open={openDeleteDialog}
                 onClose={handleCloseDeleteDialog}
@@ -210,6 +265,16 @@ function CuratorReportsPage() {
                 title="Удалить отчет?"
                 message={`Вы уверены, что хотите удалить отчет "${reportToDelete?.title || ''}"?`}
              />
+             <Snackbar
+                open={snackbar.open}
+                autoHideDuration={6000}
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
          </Container>
     );
 }

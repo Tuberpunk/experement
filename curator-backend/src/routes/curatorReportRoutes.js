@@ -5,6 +5,8 @@ const { authenticateToken, isAdmin } = require('../middleware/auth'); // isAdmin
 
 const router = express.Router();
 
+router.get('/stats', authenticateToken, reportController.getReportsStatistics);
+
 // Получение списка (фильтруется по роли внутри контроллера)
 router.get('/', authenticateToken, reportController.getAllReports);
 
@@ -16,6 +18,7 @@ router.get('/:id', authenticateToken, reportController.loadReport, reportControl
 
 // Удаление (права проверяются в deleteReport)
 router.delete('/:id', authenticateToken, reportController.loadReport, reportController.deleteReport);
+
 
 // Обновление (если будете реализовывать)
 // router.put('/:id', authenticateToken, reportController.loadReport, reportController.updateReport);

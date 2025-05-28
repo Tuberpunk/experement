@@ -178,6 +178,85 @@ exports.deleteReport = async (req, res) => {
     }
 };
 
+exports.getReportsStatistics = async (req, res) => {
+    const { id: userId, role } = req.user; // ID и роль текущего пользователя
+    let whereCondition = {}; // Условие для фильтрации отчетов по пользователю
+
+    if (role === 'curator') {
+        whereCondition.curatorUserId = userId;
+    }
+    // Для администратора whereCondition остается пустым, чтобы считать все отчеты
+
+    try {
+        // 1. Общее количество отчетов
+        const totalReports = await CuratorReport.count({ where: whereCondition });
+
+        // 2. Общее количество уникальных студентов-участников во всех отчетах
+        // Обратите внимание: report_participants - это имя промежуточной таблицы,
+        // которое было указано в связи belongsToMany в models/index.js
+        const totalParticipantsResult = await sequelize.query(
+            `SELECT COUNT(DISTINCT rp.student_id) AS "totalUniqueParticipants"
+             FROM report_participants rp
+             JOIN curator_reports cr ON rp.report_id = cr.report_id
+             ${role === 'curator' ? 'WHERE cr.curator_user_id = :userId' : ''}`,
+            {
+                replacements: { userId: role === 'curator' ? userId : null },
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+        const totalUniqueParticipants = totalParticipantsResult[0]?.totalUniqueParticipants || 0;
+
+        // 3. Количество отчетов за текущий месяц (пример)
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const endOfMonth = new Date(startOfMonth);
+        endOfMonth.setMonth(startOfMonth.getMonth() + 1);
+
+        const reportsThisMonth = await CuratorReport.count({
+            where: {
+                ...whereCondition,
+                reportDate: {
+                    [Op.gte]: startOfMonth,
+                    [Op.lt]: endOfMonth,
+                },
+            },
+        });
+        
+        // 4. Общее количество мероприятий, с которыми связаны отчеты (если актуально)
+        // Считаем только уникальные eventId, на которые есть хотя бы один отчет (учитывая роль)
+        const distinctEventsWithReports = await CuratorReport.aggregate('eventId', 'count', {
+            distinct: true,
+            where: {
+                ...whereCondition,
+                eventId: { [Op.ne]: null } // Учитываем только отчеты, связанные с мероприятиями
+            }
+        });
+        // Результат aggregate будет числом уникальных eventId, если distinct: true и указано поле.
+        // Если нужно количество уникальных eventId, то этот подход верен.
+        // Если нужно количество отчетов, у которых есть eventId, то это будет:
+        // const reportsLinkedToEvents = await CuratorReport.count({
+        //     where: {
+        //         ...whereCondition,
+        //         eventId: { [Op.ne]: null }
+        //     }
+        // });
+
+
+        res.json({
+            totalReports,
+            totalUniqueParticipants: parseInt(totalUniqueParticipants, 10), // Убедимся, что это число
+            reportsThisMonth,
+            distinctEventsLinkedToReports: distinctEventsWithReports, // Количество уникальных мероприятий, по которым есть отчеты
+            // Вы можете добавить другие статистические данные по необходимости
+        });
+
+    } catch (error) {
+        console.error('Error fetching reports statistics:', error);
+        res.status(500).json({ message: 'Ошибка сервера при получении статистики по отчетам' });
+    }
+};
 
 // PUT /api/curator-reports/:id - Обновление отчета
 // Мы пропускаем реализацию обновления для краткости, но она будет похожа

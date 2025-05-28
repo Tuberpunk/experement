@@ -62,3 +62,13 @@ export const getMyStudentsForReport = async () => {
           return [];
      }
 };
+
+export const getCuratorReportsStatistics = async () => {
+    try {
+        const response = await apiClient.get('/curator-reports/stats');
+        return response.data; // Ожидаем объект со статистикой
+    } catch (error) {
+        console.error("API Error fetching curator reports statistics:", error);
+        throw error;
+    }
+};
