@@ -4,24 +4,35 @@ import { Link as RouterLink } from 'react-router-dom';
 import {
     Container, Typography, Button, Box, CircularProgress, Alert, Paper, IconButton, Tooltip,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-    Grid, // Добавлен Grid для статистики
-    Snackbar, // Добавлен Snackbar
-    Divider // Добавлен Divider
+    Grid, Snackbar, Divider, List, ListItem, ListItemText,
+    TextField, // Для выбора дат
+    MenuItem, // Для Select
+    Select, // Для выбора куратора
+    FormControl, // Для Select
+    InputLabel // Для Select
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import AssessmentIcon from '@mui/icons-material/Assessment'; // Иконка для отчетов/статистики
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt'; // Иконка для участников
-import EventNoteIcon from '@mui/icons-material/EventNote'; // Иконка для мероприятий
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import CategoryIcon from '@mui/icons-material/Category'; // Иконка для категорий/типов
+import BarChartIcon from '@mui/icons-material/BarChart'; // Еще одна иконка для статистики
+import PublicIcon from '@mui/icons-material/Public'; // Иконка для иностранных участников
+import ChildCareIcon from '@mui/icons-material/ChildCare';
+import FilterListIcon from '@mui/icons-material/FilterList';
 
 // Контекст и API
 import { useAuth } from '../contexts/AuthContext';
-import { getCuratorReports, deleteCuratorReport, getCuratorReportsStatistics } from '../api/curatorReports'; // Добавлена getCuratorReportsStatistics
+import { getCuratorReports, deleteCuratorReport, getCuratorReportsStatistics } from '../api/curatorReports';
+import { getUsers } from '../api/users';
 // Вспомогательные компоненты
-import ConfirmationDialog from '../components/ConfirmationDialog'; // Диалог подтверждения
+import ConfirmationDialog from '../components/ConfirmationDialog';
 // Форматирование даты
-import { format } from 'date-fns';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'; // Для DatePicker
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFnsV3'; // Адаптер для DatePicker
+import { format, isValid, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 // Компонент для отображения одного блока статистики
@@ -38,7 +49,41 @@ const StatCard = ({ title, value, icon, loading }) => (
         </Box>
     </Paper>
 );
+// НОВЫЙ Компонент для отображения статистики по категориям
+const CategoryStatCard = ({ title, data, itemNameKey, itemCountKey, icon, loading }) => (
+    <Grid item xs={30} sm={30} md={4
 
+    }> {/* md={4} чтобы поместить 3 в ряд */}
+        <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                {icon && <Box sx={{ mr: 1, color: 'primary.main' }}>{React.cloneElement(icon, { fontSize: 'medium' })}</Box>}
+                <Typography variant="h6" component="div">
+                    {title}
+                </Typography>
+            </Box>
+            {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 100 }}>
+                    <CircularProgress size={24} />
+                </Box>
+            ) : (
+                data && data.length > 0 ? (
+                    <List dense disablePadding>
+                        {data.map((item, index) => (
+                            <ListItem key={index} disableGutters sx={{py: 0.5}}>
+                                <ListItemText 
+                                    primary={item[itemNameKey] || 'Не указано'} 
+                                    secondary={`Отчетов: ${item[itemCountKey]}`} 
+                                />
+                            </ListItem>
+                        ))}
+                    </List>
+                ) : (
+                    <Typography variant="body2" color="text.secondary">Нет данных</Typography>
+                )
+            )}
+        </Paper>
+    </Grid>
+);
 
 function CuratorReportsPage() {
     const { user } = useAuth(); // Получаем текущего пользователя
@@ -52,26 +97,77 @@ function CuratorReportsPage() {
     const [totalItems, setTotalItems] = useState(0);
     const [statistics, setStatistics] = useState(null); // Состояние для статистики
 
+    const [startDate, setStartDate] = useState(null);
+    const [endDate, setEndDate] = useState(null);
+    const [selectedCuratorId, setSelectedCuratorId] = useState(''); // Для фильтра по куратору (админ)
+    const [curators, setCurators] = useState([]); // Список кураторов для Select
+
     // Состояние для диалога удаления
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [reportToDelete, setReportToDelete] = useState(null); // { id, title }
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-
+    
+    // Загрузка списка кураторов для администратора
+useEffect(() => {
+    if (user?.role === 'administrator') {
+        const fetchCurators = async () => {
+            try {
+                const usersData = await getUsers({ role: 'curator' }); // API-вызов
+                
+                // Более надежная проверка и установка состояния
+                if (Array.isArray(usersData)) {
+                    setCurators(usersData);
+                } else if (usersData && Array.isArray(usersData.users)) {
+                    // Распространенный случай, если API возвращает объект вида { users: [...] }
+                    setCurators(usersData.users);
+                } else if (usersData && Array.isArray(usersData.data)) {
+                    // Еще один возможный случай, если API возвращает { data: [...] }
+                    setCurators(usersData.data);
+                }
+                else {
+                    // Если данные пришли не в формате массива, логируем это и устанавливаем пустой массив
+                    console.warn('Ответ API getUsers для кураторов не является массивом. Получено:', usersData);
+                    setCurators([]);
+                }
+            } catch (err) {
+                console.error("Не удалось загрузить кураторов:", err);
+                setSnackbar({ open: true, message: 'Не удалось загрузить список кураторов для фильтра', severity: 'error' });
+                setCurators([]); // В случае ошибки также устанавливаем пустой массив
+            }
+        };
+        fetchCurators();
+    }
+}, [user?.role, setSnackbar]);
 
     // Функция загрузки статистики
-    const fetchStatistics = useCallback(async () => {
+const fetchStatistics = useCallback(async () => {
         setLoadingStats(true);
         setStatsError('');
         try {
-            const data = await getCuratorReportsStatistics();
+            const params = {};
+            if (startDate && isValid(startDate)) {
+                params.startDate = format(startDate, 'yyyy-MM-dd');
+            }
+            if (endDate && isValid(endDate)) {
+                // Для корректного включения выбранной даты, если время не указано,
+                // бэкенд должен правильно обрабатывать endDate (например, < endDate + 1 день)
+                // или можно отправлять endDate как конец дня.
+                // Пока отправляем как есть, бэкенд обрабатывает "< endDate + 1 день" для SQL
+                params.endDate = format(endDate, 'yyyy-MM-dd');
+            }
+            if (user?.role === 'administrator' && selectedCuratorId) {
+                params.curatorId = selectedCuratorId;
+            }
+            // Если текущий пользователь куратор, его ID автоматически используется на бэкенде
+
+            const data = await getCuratorReportsStatistics(params);
             setStatistics(data);
         } catch (err) {
             setStatsError(err.response?.data?.message || err.message || 'Не удалось загрузить статистику');
-            console.error("Fetch reports statistics error:", err);
         } finally {
             setLoadingStats(false);
         }
-    }, []);
+    }, [startDate, endDate, selectedCuratorId, user?.role]); 
 
     // Функция загрузки отчетов
     const fetchReports = useCallback(async () => {
@@ -90,16 +186,39 @@ function CuratorReportsPage() {
         }
     }, [page, rowsPerPage]);
 
+    
+    useEffect(() => {
+        fetchReports(); // Загрузка списка отчетов (не зависит от фильтров статистики)
+    }, [fetchReports]);
+
+    useEffect(() => {
+        fetchStatistics(); // Загрузка статистики (зависит от фильтров)
+    }, [fetchStatistics]); // fetchStatistics уже содержит нужные зависимости
+ 
     useEffect(() => {
         fetchReports();
         fetchStatistics();
     }, [fetchReports, fetchStatistics]);
+
+    const handleApplyFilters = () => {
+        fetchStatistics(); // Просто перезапускаем загрузку статистики с текущими значениями фильтров
+    };
 
     // Обработчики пагинации
     const handleChangePage = (event, newPage) => {
         setPage(newPage);
     };
 
+    const handleResetFilters = () => {
+        setStartDate(null);
+        setEndDate(null);
+        setSelectedCuratorId('');
+        // Немедленный вызов fetchStatistics здесь может быть избыточным,
+        // так как useEffect [fetchStatistics] среагирует на изменение состояний.
+        // Но для явного сброса можно и вызвать, если useEffect не перехватывает пустые значения так, как нужно.
+        // По факту, useEffect [fetchStatistics] сам вызовется из-за изменения selectedCuratorId, startDate, endDate
+    };
+    
     const handleChangeRowsPerPage = (event) => {
         setRowsPerPage(parseInt(event.target.value, 10));
         setPage(0);
@@ -146,22 +265,79 @@ function CuratorReportsPage() {
     }, []);
 
     return (
-         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-                <Typography variant="h4" component="h1">
-                     {user?.role === 'administrator' ? 'Отчеты Кураторов' : 'Мои Отчеты'}
-                 </Typography>
-                 {(user?.role === 'curator' || user?.role === 'administrator') && (
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        component={RouterLink}
-                        to="/curator-reports/new"
-                    >
-                        Добавить отчет
-                    </Button>
-                 )}
-            </Box>
+        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+            <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                    <Typography variant="h4" component="h1">
+                        {user?.role === 'administrator' ? 'Отчеты Кураторов' : 'Мои Отчеты'}
+                    </Typography>
+                    {(user?.role === 'curator' || user?.role === 'administrator') && (
+                        <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/curator-reports/new">
+                            Добавить отчет
+                        </Button>
+                    )}
+                </Box>
+
+                {/* Панель Фильтров для Статистики */}
+                <Paper sx={{ p: 2, mb: 3 }}>
+                    <Typography variant="h6" gutterBottom>Фильтры статистики</Typography>
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} sm={6} md={3}>
+                            <DatePicker
+                                label="Дата начала"
+                                value={startDate}
+                                onChange={(newValue) => setStartDate(newValue)}
+                                slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                            <DatePicker
+                                label="Дата окончания"
+                                value={endDate}
+                                onChange={(newValue) => setEndDate(newValue)}
+                                slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                                minDate={startDate || undefined} // Нельзя выбрать дату окончания раньше даты начала
+                            />
+                        </Grid>
+                        {user?.role === 'administrator' && (
+                            <Grid item xs={12} sm={6} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel id="curator-select-label">Куратор</InputLabel>
+                                    <Select
+                                        labelId="curator-select-label"
+                                        value={selectedCuratorId}
+                                        label="Куратор"
+                                        onChange={(e) => setSelectedCuratorId(e.target.value)}
+                                    >
+                                        <MenuItem value="">
+                                            <em>Все кураторы</em>
+                                        </MenuItem>
+                                        {curators.map((c) => (
+                                            <MenuItem key={c.userId} value={c.userId}>{c.fullName}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                        )}
+                        <Grid item xs={12} sm={6} md={user?.role === 'administrator' ? 3 : 6} sx={{display: 'flex', gap: 1}}>
+                            <Button
+                                variant="contained"
+                                onClick={handleApplyFilters}
+                                startIcon={<FilterListIcon />}
+                                sx={{ flexGrow: 1 }}
+                            >
+                                Применить
+                            </Button>
+                             <Button
+                                variant="outlined"
+                                onClick={handleResetFilters}
+                                sx={{ flexGrow: 1 }}
+                            >
+                                Сбросить
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Paper>
 
             {/* Секция Статистики */}
             <Box sx={{ mb: 3 }}>
@@ -169,7 +345,9 @@ function CuratorReportsPage() {
                     Сводная статистика
                 </Typography>
                 {statsError && <Alert severity="error" sx={{ mb: 2 }}>{statsError}</Alert>}
-                <Grid container spacing={2}>
+                
+                {/* Основные карточки статистики */}
+                <Grid container spacing={2} sx={{ mb: 3 }}>
                     <Grid item xs={12} sm={6} md={3}>
                         <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} loading={loadingStats} />
                     </Grid>
@@ -180,8 +358,45 @@ function CuratorReportsPage() {
                         <StatCard title="Отчетов в этом месяце" value={statistics?.reportsThisMonth ?? '...'} icon={<EventNoteIcon />} loading={loadingStats}/>
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
-                        <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<EventNoteIcon color="action"/>} loading={loadingStats}/>
+                        <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<BarChartIcon />} loading={loadingStats}/>
                     </Grid>
+                    <Grid item xs={12} sm={6} md={3} lg={2}>
+                        <StatCard title="Иностранные участники (всего)" value={statistics?.totalForeignerParticipants ?? '...'} icon={<PublicIcon />} loading={loadingStats}/>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3} lg={2}>
+                        <StatCard title="Несовершеннолетние (всего)" value={statistics?.totalMinorParticipants ?? '...'} icon={<ChildCareIcon />} loading={loadingStats}/>
+                    </Grid>
+                </Grid>
+
+                {/* Новая статистика по категориям */}
+                <Typography variant="h6" gutterBottom component="div" sx={{ mt: 2, mb: 1 }}>
+                    Детализация по мероприятиям
+                </Typography>
+                 <Grid container spacing={2}>
+                    <CategoryStatCard
+                        title="По Направлениям"
+                        data={statistics?.reportsByDirection}
+                        itemNameKey="directionName"
+                        itemCountKey="reportCount"
+                        icon={<CategoryIcon />}
+                        loading={loadingStats}
+                    />
+                    <CategoryStatCard
+                        title="По Уровням"
+                        data={statistics?.reportsByLevel}
+                        itemNameKey="levelName"
+                        itemCountKey="reportCount"
+                        icon={<CategoryIcon />}
+                        loading={loadingStats}
+                    />
+                    <CategoryStatCard
+                        title="По Форматам"
+                        data={statistics?.reportsByFormat}
+                        itemNameKey="formatName"
+                        itemCountKey="reportCount"
+                        icon={<CategoryIcon />}
+                        loading={loadingStats}
+                    />
                 </Grid>
             </Box>
             <Divider sx={{ mb: 3 }} />
@@ -275,8 +490,8 @@ function CuratorReportsPage() {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
-         </Container>
+            </Container>
+        </LocalizationProvider>
     );
 }
-
 export default CuratorReportsPage;

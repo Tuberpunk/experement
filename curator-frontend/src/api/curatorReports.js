@@ -63,10 +63,11 @@ export const getMyStudentsForReport = async () => {
      }
 };
 
-export const getCuratorReportsStatistics = async () => {
+export const getCuratorReportsStatistics = async (params = {}) => { // Принимает объект параметров
     try {
-        const response = await apiClient.get('/curator-reports/stats');
-        return response.data; // Ожидаем объект со статистикой
+        // params может содержать { startDate, endDate, curatorId }
+        const response = await apiClient.get('/curator-reports/stats', { params });
+        return response.data;
     } catch (error) {
         console.error("API Error fetching curator reports statistics:", error);
         throw error;
