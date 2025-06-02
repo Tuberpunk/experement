@@ -5,19 +5,26 @@ import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import {
-    Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar, Link
-    // Убрали импорты для Select: FormControl, InputLabel, Select, MenuItem, FormHelperText
+    Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar, Link,
+    Select, MenuItem, FormControl, InputLabel, FormHelperText
+
 } from '@mui/material';
 import { registerUser } from '../api/auth';
-
+import { useAuth } from '../contexts/AuthContext'; // Для регистрации
 // --- Схема валидации БЕЗ РОЛИ ---
 const registrationSchema = yup.object().shape({
-    fullName: yup.string().required('ФИО обязательно'),
-    email: yup.string().required('Email обязателен').email('Введите корректный email'),
-    password: yup.string().required('Пароль обязателен').min(6, 'Пароль должен быть не менее 6 символов'),
+fullName: yup.string().required('ФИО обязательно'),
+    email: yup.string().email('Некорректный email').required('Email обязателен'),
+    password: yup.string()
+        .required('Пароль обязателен')
+        .min(8, 'Пароль должен содержать не менее 8 символов')
+        .matches(/[a-z]/, 'Пароль должен содержать хотя бы одну строчную букву')
+        .matches(/[A-Z]/, 'Пароль должен содержать хотя бы одну заглавную букву')
+        .matches(/[0-9]/, 'Пароль должен содержать хотя бы одну цифру')
+        .matches(/[\W_]/, 'Пароль должен содержать хотя бы один специальный символ (например, !@#$%)'), // \W эквивалентно [^a-zA-Z0-9_], _ добавляем отдельно если он нужен
     confirmPassword: yup.string()
         .oneOf([yup.ref('password'), null], 'Пароли должны совпадать')
-        .required('Подтвердите пароль'),
+        .required('Подтверждение пароля обязательно'),
     // roleName убран из схемы
     position: yup.string().nullable(),
     phoneNumber: yup.string().nullable(),

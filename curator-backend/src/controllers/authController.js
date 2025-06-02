@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { User, Role } = require('../models');
+//const { sendAdminNotification } = require('../services/notificationService');
 require('dotenv').config();
 
 // --- Заглушка/Импорт сервиса отправки email ---
@@ -12,7 +13,29 @@ const sendAdminNotification = async (subject, text) => {
     console.log(`---------------------------------`);
     return Promise.resolve();
 };
-// -------------------------------------------
+//----------------------------------------------------
+
+const validatePassword = (password) => {
+    if (!password) {
+        return "Пароль не может быть пустым.";
+    }
+    if (password.length < 8) {
+        return "Пароль должен содержать не менее 8 символов.";
+    }
+    if (!/[a-z]/.test(password)) {
+        return "Пароль должен содержать хотя бы одну строчную букву.";
+    }
+    if (!/[A-Z]/.test(password)) {
+        return "Пароль должен содержать хотя бы одну заглавную букву.";
+    }
+    if (!/[0-9]/.test(password)) {
+        return "Пароль должен содержать хотя бы одну цифру.";
+    }
+    if (!/[\W_]/.test(password)) { // \W - любой не буквенно-цифровой символ
+        return "Пароль должен содержать хотя бы один специальный символ.";
+    }
+    return null; // Нет ошибок
+};
 
 // --- Регистрация пользователя (ВСЕГДА КАК КУРАТОР) ---
 exports.register = async (req, res) => {
@@ -28,13 +51,15 @@ exports.register = async (req, res) => {
 
     // Роль жестко задана
     const fixedRoleName = 'curator';
+    
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+    }
 
     // Валидация входных данных
     if (!email || !password || !fullName) {
         return res.status(400).json({ message: 'Email, пароль и ФИО обязательны для регистрации' });
-    }
-    if (password.length < 6) {
-        return res.status(400).json({ message: 'Пароль должен быть не менее 6 символов' });
     }
 
     try {
