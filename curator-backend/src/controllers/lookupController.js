@@ -1,14 +1,104 @@
 // src/controllers/lookupController.js
-    const {
-        EventDirection, // Убедитесь, что EventDirection импортирован
-        EventLevel,
-        EventFormat,
-        ParticipantCategory,
-        FundingSource,
-        StudentTag,
-        Role
-    } = require('../models');
+const {
+    Role, // Роли пользователей
+    EventDirection, // Направления мероприятий
+    EventLevel, // Уровни мероприятий
+    EventFormat, // Форматы мероприятий
+    ParticipantCategory, // Категории участников
+    FundingSource, // Источники финансирования
+    StudentTag, // Теги студентов (например, "группа риска", "активист")
+    StudentGroup // Учебные группы
+} = require('../models');
 const { Op } = require('sequelize'); // Может понадобиться для проверки уникальности при обновлении
+
+
+const getModelAndOptions = (lookupType) => {
+    switch (lookupType) {
+        case 'Role':
+            return {
+                model: Role,
+                // ИСПРАВЛЕНО: используем атрибуты модели 'roleId' и 'roleName'
+                // Sequelize автоматически использует 'field' для имен колонок в БД ('role_id', 'role_name')
+                // Фронтенд получит поля 'id' и 'name'
+                attributes: [
+                    ['roleId', 'id'],
+                    ['roleName', 'name'] 
+                ],
+                order: [['roleName', 'ASC']] // Сортируем по атрибуту модели 'roleName'
+            };
+        case 'EventDirection':
+            return {
+                model: EventDirection,
+                attributes: [['directionId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'EventLevel':
+            return {
+                model: EventLevel,
+                attributes: [['levelId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'EventFormat':
+            return {
+                model: EventFormat,
+                attributes: [['formatId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'ParticipantCategory':
+            return {
+                model: ParticipantCategory,
+                attributes: [['categoryId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'FundingSource':
+            return {
+                model: FundingSource,
+                attributes: [['sourceId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'StudentTag':
+            return {
+                model: StudentTag,
+                attributes: [['tagId', 'id'], 'name'],
+                order: [['name', 'ASC']]
+            };
+        case 'StudentGroup': // Добавлен кейс для учебных групп
+             return {
+                model: StudentGroup,
+                attributes: [['groupId', 'id'], 'groupName', 'curatorUserId'], // curatorUserId может быть полезен для фильтрации
+                // Если нужно также имя куратора:
+                // include: [{ model: User, as: 'Curator', attributes: ['fullName'] }],
+                order: [['groupName', 'ASC']]
+            };
+        // Добавьте другие кейсы по мере необходимости
+        default:
+            return null;
+    }
+};
+
+exports.getAll = async (req, res) => {
+    const { type } = req.params;
+    const modelAndOptions = getModelAndOptions(type);
+
+    if (!modelAndOptions) {
+        return res.status(400).json({ message: 'Недопустимый тип справочника' });
+    }
+
+    const { model, attributes, order, include, where } = modelAndOptions;
+
+    try {
+        const items = await model.findAll({
+            attributes: attributes || undefined, // Если attributes не заданы, Sequelize выберет все поля
+            order: order || undefined,
+            include: include || undefined,
+            where: where || undefined,
+        });
+        res.json(items);
+    } catch (error) {
+        console.error(`Error fetching ${type}:`, error);
+        res.status(500).json({ message: `Не удалось загрузить список ${type}` });
+    }
+};
 
 // Общая функция для получения справочника (ИСПРАВЛЕННАЯ)
     const getLookupData = async (Model, req, res) => {

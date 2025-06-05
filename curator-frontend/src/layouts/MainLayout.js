@@ -169,7 +169,6 @@ function MainLayout() {
                 <MenuItem onClick={() => {handleAdminMenuClose(); navigate('/admin/lookups');}}> <ListItemIcon><DnsIcon fontSize="small" /></ListItemIcon> <ListItemText>Управление справочниками</ListItemText> </MenuItem>
             </Menu>
             <Container component="main" sx={{ flexGrow: 1, py: { xs: 2, sm: 3 } }}> <Outlet /> </Container>
-            <Box component="footer" sx={{ bgcolor: 'background.paper', p: 2, mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}> <Typography variant="body2" color="text.secondary" align="center"> © {new Date().getFullYear()} Все права защищены. </Typography> </Box>
         </Box>
     );
 }
