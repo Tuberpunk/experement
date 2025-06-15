@@ -20,6 +20,8 @@ import LanguageIcon from '@mui/icons-material/Language'; // Иностранцы
 import ChildCareIcon from '@mui/icons-material/ChildCare'; // Несовершеннолетние
 import ArticleIcon from '@mui/icons-material/Article'; // Связанное мероприятие
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'; // Дата создания
+import PublicIcon from '@mui/icons-material/Public';
+import CategoryIcon from '@mui/icons-material/Category';
 // Контекст, API, Компоненты
 import { useAuth } from '../contexts/AuthContext';
 import { getCuratorReportById, deleteCuratorReport } from '../api/curatorReports';
@@ -28,150 +30,157 @@ import ConfirmationDialog from '../components/ConfirmationDialog';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
+const InfoItem = ({ icon, label, value, chip = false }) => (
+    <Grid item xs={12} sm={6}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Box sx={{ mr: 1.5, color: 'text.secondary' }}>{icon}</Box>
+            <Box>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                    {chip ? <Chip label={value || 'Не указано'} size="small"/> : (value || 'Не указано')}
+                </Typography>
+            </Box>
+        </Box>
+    </Grid>
+);
+
 function CuratorReportDetailPage() {
-    const { id } = useParams(); // Получаем ID отчета из URL
-    const navigate = useNavigate();
-    const { user } = useAuth(); // Получаем текущего пользователя для проверки прав
+    const { id } = useParams();
+    const { user } = useAuth();
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
 
-    // Функция загрузки данных отчета
     const fetchReport = useCallback(async () => {
-        setLoading(true); setError('');
         try {
-            // Запрос на бэкенд, права на чтение проверяются там же + в middleware loadReport
             const data = await getCuratorReportById(id);
             setReport(data);
         } catch (err) {
-            const message = err.response?.data?.message || err.message || 'Не удалось загрузить данные отчета.';
-            setError(message);
-            console.error("Fetch report detail error:", err);
-            // Если ошибка "не найдено" или "доступ запрещен", можно вернуть пользователя назад
-            if(err.response?.status === 404 || err.response?.status === 403) {
-                 setTimeout(() => navigate('/curator-reports'), 3000); // Возврат через 3 сек
-            }
-        } finally { setLoading(false); }
-    }, [id, navigate]);
-
-    // Загрузка при монтировании или смене ID
-    useEffect(() => { fetchReport(); }, [fetchReport]);
-
-    // --- Логика удаления ---
-    const handleDeleteClick = () => setOpenDeleteDialog(true);
-    const handleCloseDeleteDialog = () => setOpenDeleteDialog(false);
-    const handleConfirmDelete = async () => {
-        setError(''); // Сброс предыдущих ошибок
-        try {
-            await deleteCuratorReport(id);
-            navigate('/curator-reports'); // Возврат к списку после удаления
-            // Можно использовать Snackbar для сообщения об успехе на странице списка
-        } catch (err) {
-             const message = err.response?.data?.message || err.message || 'Не удалось удалить отчет';
-             setError(message); // Показать ошибку на этой странице
-             console.error("Delete report error:", err);
-             handleCloseDeleteDialog(); // Закрыть диалог
+            setError(err.response?.data?.message || 'Не удалось загрузить данные отчета.');
+        } finally {
+            setLoading(false);
         }
+    }, [id]);
+
+    useEffect(() => {
+        fetchReport();
+    }, [fetchReport]);
+
+    if (loading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+    }
+
+    if (error) {
+        return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
+    }
+
+    if (!report) {
+        return <Container sx={{ mt: 4 }}><Alert severity="info">Отчет не найден.</Alert></Container>;
+    }
+    
+    const displayData = {
+        title: report.RelatedEvent?.title ?? report.reportTitle,
+        location: report.RelatedEvent?.locationText ?? report.locationText,
+        direction: report.RelatedEvent?.Direction?.name ?? report.directionText,
+        foreignerCount: report.RelatedEvent?.foreignerCount ?? report.foreignerCount,
+        minorCount: report.RelatedEvent?.minorCount ?? report.minorCount,
+        reportDate: report.reportDate,
+        durationMinutes: report.durationMinutes,
+        invitedGuestsInfo: report.invitedGuestsInfo,
+        mediaReferences: report.mediaReferences,
+        participants: report.ParticipantStudents || [],
+        curatorName: report.Curator?.fullName || 'Неизвестно'
     };
 
-    // Проверка прав на удаление (Админ или Автор отчета)
-    const canDelete = user?.role === 'administrator' || user?.id === report?.curatorUserId;
-
-    // --- Рендеринг ---
-    if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
-    // Показываем ошибку, если она есть (даже если отчет загрузился, т.к. ошибка может быть при удалении)
-    if (error && !report) return <Container maxWidth="md" sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
-    if (!report) return <Container maxWidth="md" sx={{ mt: 4 }}><Typography>Отчет не найден или доступ запрещен.</Typography></Container>;
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-             <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                {/* --- Заголовок и кнопки --- */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-                     <Box>
-                        <Typography variant="h4" component="h1" gutterBottom sx={{ mr: 2 }}>
-                             Отчет куратора
-                        </Typography>
-                         <Typography variant="h5" component="h2" color="text.secondary">
-                             {report.reportTitle}
-                         </Typography>
-                    </Box>
-                     {/* Кнопка удаления (если есть права) */}
-                     {canDelete && (
-                        <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={handleDeleteClick} sx={{ mb: {xs: 1, sm: 0}}}> Удалить отчет </Button>
-                     )}
-                 </Box>
-                 {/* Показываем ошибку удаления */}
-                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-                 <Divider sx={{ mb: 3 }} />
+            <Paper sx={{ p: 3 }}>
+                <Typography variant="h4" component="h1" gutterBottom>
+                    {displayData.title}
+                </Typography>
+                <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
+                    Отчет куратора: {displayData.curatorName}
+                </Typography>
+                <Divider sx={{ mb: 3 }} />
 
-                 {/* --- Детальная информация --- */}
-                 <Grid container spacing={3}>
-                     {/* Левая колонка: Детали отчета */}
-                     <Grid item xs={12} md={7}>
-                         <Typography variant="h6" gutterBottom>Детали</Typography>
-                         <List dense>
-                             <ListItem><ListItemIcon><EventIcon/></ListItemIcon><ListItemText primary="Дата проведения" secondary={format(new Date(report.reportDate), 'dd MMMM yyyy', { locale: ru })} /></ListItem>
-                             <ListItem><ListItemIcon><LocationOnIcon/></ListItemIcon><ListItemText primary="Место проведения" secondary={report.locationText || 'Не указано'} /></ListItem>
-                             <ListItem><ListItemIcon><FlagIcon/></ListItemIcon><ListItemText primary="Направление работы" secondary={report.directionText || 'Не указано'} /></ListItem>
-                             <ListItem><ListItemIcon><AccessTimeIcon/></ListItemIcon><ListItemText primary="Продолжительность (минут)" secondary={report.durationMinutes ?? 'Не указано'} /></ListItem>
-                             <ListItem><ListItemIcon><PeopleOutlineIcon/></ListItemIcon><ListItemText primary="Приглашенные гости/эксперты" secondary={report.invitedGuestsInfo || 'Не указано'} sx={{whiteSpace: 'pre-wrap'}} /></ListItem>
-                             <ListItem><ListItemIcon><LinkIcon/></ListItemIcon><ListItemText primary="Ссылки на фото/публикации" secondary={report.mediaReferences || 'Не указано'} sx={{whiteSpace: 'pre-wrap'}} /></ListItem>
-                         </List>
+                <Grid container spacing={2}>
+                    <InfoItem 
+                        icon={<EventIcon />} 
+                        label="Дата проведения" 
+                        value={displayData.reportDate ? format(new Date(displayData.reportDate), 'dd MMMM𒐝', { locale: ru }) : 'Не указана'} 
+                    />
+                    <InfoItem 
+                        icon={<LocationOnIcon />} 
+                        label="Место проведения" 
+                        value={displayData.location} 
+                    />
+                    <InfoItem 
+                        icon={<CategoryIcon />} 
+                        label="Направление работы" 
+                        value={displayData.direction}
+                        chip={true}
+                    />
+                    <InfoItem 
+                        icon={<AccessTimeIcon />} 
+                        label="Продолжительность (минут)" 
+                        value={displayData.durationMinutes} 
+                    />
+                     <InfoItem 
+                        icon={<PublicIcon />} 
+                        label="Кол-во иностранных участников" 
+                        value={displayData.foreignerCount ?? 0} 
+                    />
+                    <InfoItem 
+                        icon={<ChildCareIcon />} 
+                        label="Кол-во несовершеннолетних участников" 
+                        value={displayData.minorCount ?? 0} 
+                    />
+                </Grid>
 
-                         {/* Связанное мероприятие */}
-                         {report.RelatedEvent && (
-                            <>
-                                <Divider sx={{my: 2}}/>
-                                <Typography variant="h6" gutterBottom>Связанное мероприятие</Typography>
-                                 <ListItem button component={RouterLink} to={`/events/${report.RelatedEvent.eventId}`} sx={{color: 'inherit', textDecoration: 'none'}}>
-                                     <ListItemIcon><ArticleIcon/></ListItemIcon>
-                                     <ListItemText primary={report.RelatedEvent.title} secondary={`Дата: ${format(new Date(report.RelatedEvent.startDate), 'dd.MM.yyyy')}`} />
-                                 </ListItem>
-                             </>
-                         )}
-
-                     </Grid>
-
-                      {/* Правая колонка: Автор, Участники, Статистика */}
-                     <Grid item xs={12} md={5}>
-                          {/* Автор */}
-                         <Typography variant="h6" gutterBottom>Автор и Статистика</Typography>
-                         <List dense>
-                            <ListItem>
-                                <ListItemIcon><PersonIcon/></ListItemIcon>
-                                <ListItemText primary="Автор отчета (Куратор)" secondary={report.Curator?.fullName || 'Неизвестен'} />
-                            </ListItem>
-                             <ListItem><ListItemIcon><CalendarMonthIcon/></ListItemIcon><ListItemText primary="Отчет создан" secondary={format(new Date(report.createdAt), 'dd.MM.yyyy HH:mm')} /></ListItem>
-                            <ListItem><ListItemIcon><LanguageIcon/></ListItemIcon><ListItemText primary="Кол-во иностранцев" secondary={report.foreignerCount ?? 0} /></ListItem>
-                            <ListItem><ListItemIcon><ChildCareIcon/></ListItemIcon><ListItemText primary="Кол-во несовершеннолетних" secondary={report.minorCount ?? 0} /></ListItem>
-                         </List>
-
-                         <Divider sx={{my: 2}}/>
-
-                         {/* Участники */}
-                         <Typography variant="h6" gutterBottom>Студенты-участники ({report.ParticipantStudents?.length || 0})</Typography>
-                         {report.ParticipantStudents && report.ParticipantStudents.length > 0 ? (
-                             <List dense sx={{ maxHeight: 350, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-                                {report.ParticipantStudents.map(student => (
-                                    <ListItem key={student.studentId} disablePadding>
-                                         {/* TODO: Сделать ссылку на /students/:id, если есть такая страница */}
-                                         <ListItemText primary={student.fullName} sx={{pl:1}}/>
-                                    </ListItem>
-                                ))}
-                             </List>
-                         ) : (
-                             <Typography variant="body2" color="text.secondary">Студенты-участники не указаны.</Typography>
-                         )}
-                     </Grid>
-                 </Grid>
-             </Paper>
-
-             <ConfirmationDialog open={openDeleteDialog} onClose={handleCloseDeleteDialog} onConfirm={handleConfirmDelete}
-                title="Удалить отчет?" message={`Вы уверены, что хотите удалить отчет "${report?.reportTitle || ''}"?`}
-            />
-         </Container>
+                <Divider sx={{ my: 3 }} />
+                
+                <Grid container spacing={4}>
+                    <Grid item xs={12} md={6}>
+                        <Typography variant="h6" gutterBottom>Участники ({displayData.participants.length})</Typography>
+                        {displayData.participants.length > 0 ? (
+                            <Paper variant="outlined" sx={{ maxHeight: 300, overflow: 'auto' }}>
+                                <List dense>
+                                    {displayData.participants.map(student => (
+                                        <ListItem key={student.studentId}>
+                                            <ListItemIcon>
+                                                <PersonIcon fontSize="small" />
+                                            </ListItemIcon>
+                                            {/* ИСПРАВЛЕНО: Используем 'fullName' */}
+                                            <ListItemText 
+                                                primary={student.fullName}
+                                                secondary={student.email}
+                                            />
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            </Paper>
+                        ) : (
+                            <Typography variant="body2" color="text.secondary">Список участников не указан.</Typography>
+                        )}
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <Box>
+                            <Typography variant="h6" gutterBottom>Приглашенные гости</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                                {displayData.invitedGuestsInfo || 'Информация отсутствует.'}
+                            </Typography>
+                        </Box>
+                        <Box sx={{ mt: 3 }}>
+                            <Typography variant="h6" gutterBottom>Ссылки на медиа</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                {displayData.mediaReferences || 'Информация отсутствует.'}
+                            </Typography>
+                        </Box>
+                    </Grid>
+                </Grid>
+            </Paper>
+        </Container>
     );
 }
 

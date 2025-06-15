@@ -4,38 +4,32 @@ import { Link as RouterLink } from 'react-router-dom';
 import {
     Container, Typography, Button, Box, CircularProgress, Alert, Paper, IconButton, Tooltip,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-    Grid, Snackbar, Divider, List, ListItem, ListItemText,
-    TextField, // Для выбора дат
-    MenuItem, // Для Select
-    Select, // Для выбора куратора
-    FormControl, // Для Select
-    InputLabel // Для Select
+    Grid, Snackbar, Divider, List, ListItem, ListItemText, Chip,
+    TextField,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
-import EventNoteIcon from '@mui/icons-material/EventNote';
-import CategoryIcon from '@mui/icons-material/Category'; // Иконка для категорий/типов
-import BarChartIcon from '@mui/icons-material/BarChart'; // Еще одна иконка для статистики
-import PublicIcon from '@mui/icons-material/Public'; // Иконка для иностранных участников
-import ChildCareIcon from '@mui/icons-material/ChildCare';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import GroupIcon from '@mui/icons-material/Group'; // Для общего числа студентов
-import GroupsIcon from '@mui/icons-material/Groups'; // Для общего числа групп
+import GroupIcon from '@mui/icons-material/Group';
+import GroupsIcon from '@mui/icons-material/Groups';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
+import CategoryIcon from '@mui/icons-material/Category';
+import BarChartIcon from '@mui/icons-material/BarChart';
 
-// Контекст и API
 import { useAuth } from '../contexts/AuthContext';
 import { getCuratorReports, deleteCuratorReport, getCuratorReportsStatistics } from '../api/curatorReports';
 import { getUsers } from '../api/users';
-// Вспомогательные компоненты
 import ConfirmationDialog from '../components/ConfirmationDialog';
-// Форматирование даты
-import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'; // Для DatePicker
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFnsV3'; // Адаптер для DatePicker
-import { format, isValid, parseISO } from 'date-fns';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFnsV3';
+import { format, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 // Компонент для отображения одного блока статистики
@@ -43,11 +37,11 @@ const StatCard = ({ title, value, icon, loading }) => (
     <Paper 
         elevation={2} 
         sx={{ 
-            p: 1.25, // Компактные отступы
+            p: 1.25,
             display: 'flex', 
             alignItems: 'center', 
-            height: '50%',
-            minHeight: '65px' // Минимальная высота
+            height: '100%',
+            minHeight: '70px'
         }}
     >
         {icon && (
@@ -69,7 +63,7 @@ const StatCard = ({ title, value, icon, loading }) => (
                 sx={{ 
                     whiteSpace: 'nowrap', 
                     overflow: 'hidden', 
-                    textOverflow: 'ellipsis', // Обрезаем длинное значение
+                    textOverflow: 'ellipsis',
                     lineHeight: 1.2 
                 }}
             >
@@ -79,11 +73,9 @@ const StatCard = ({ title, value, icon, loading }) => (
     </Paper>
 );
 
-// НОВЫЙ Компонент для отображения статистики по категориям
+// Компонент для отображения статистики по категориям
 const CategoryStatCard = ({ title, data, itemNameKey, itemCountKey, icon, loading }) => (
-    <Grid item xs={30} sm={30} md={4
-
-    }> {/* md={4} чтобы поместить 3 в ряд */}
+    <Grid item xs={12} sm={6} md={4}>
         <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 {icon && <Box sx={{ mr: 1, color: 'primary.main' }}>{React.cloneElement(icon, { fontSize: 'medium' })}</Box>}
@@ -115,32 +107,63 @@ const CategoryStatCard = ({ title, data, itemNameKey, itemCountKey, icon, loadin
     </Grid>
 );
 
-
-
 function CuratorReportsPage() {
-    const { user, loading: authLoading } = useAuth(); // Получаем текущего пользователя
+    const { user, loading: authLoading } = useAuth();
+    
+    // Состояния для данных
     const [reports, setReports] = useState([]);
-    const [loading, setLoading] = useState(true); // Для списка отчетов
-    const [loadingStats, setLoadingStats] = useState(true); // Для статистики
+    const [statistics, setStatistics] = useState(null);
+    const [curators, setCurators] = useState([]);
+    
+    // Состояния для загрузки и ошибок
+    const [loadingData, setLoadingData] = useState(true); // Единое состояние загрузки
     const [error, setError] = useState('');
-    const [statsError, setStatsError] = useState(''); // Отдельная ошибка для статистики
-    const [page, setPage] = useState(0); // MUI пагинация с 0
+    
+    // Состояния для фильтров
+    const [filters, setFilters] = useState({
+        startDate: null,
+        endDate: null,
+        selectedCuratorId: ''
+    });
+
+    // Состояния для пагинации
+    const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [totalItems, setTotalItems] = useState(0);
-    const [statistics, setStatistics] = useState(null); // Состояние для статистики
 
-    const [startDate, setStartDate] = useState(null);
-    const [endDate, setEndDate] = useState(null);
-    const [selectedCuratorId, setSelectedCuratorId] = useState(''); // Для фильтра по куратору (админ)
-    const [curators, setCurators] = useState([]); // Список кураторов для Select
-
-    // Состояние для диалога удаления
+    // Состояния для диалогов
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-    const [reportToDelete, setReportToDelete] = useState(null); // { id, title }
+    const [reportToDelete, setReportToDelete] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-    
-    // Загрузка списка кураторов для администратора
-useEffect(() => {
+
+    // Вспомогательные функции для отображения (внутри компонента)
+    const getStudentGroupDisplayValue = () => {
+        if (loadingData || !statistics || !statistics.studentGroupInfo) {
+            return '...';
+        }
+        const { type, value } = statistics.studentGroupInfo;
+        return type === 'name' ? value : `${value}`;
+    };
+
+    const getStudentGroupDisplayTitle = () => {
+        if (authLoading || !statistics || !statistics.studentGroupInfo) {
+            return "Группа";
+        }
+        const { type } = statistics.studentGroupInfo;
+        if (type === 'name') {
+            return (user?.role === 'administrator' && filters.selectedCuratorId) ? "Группа" : "Моя группа";
+        }
+        if (user?.role === 'administrator' && filters.selectedCuratorId) {
+            return "Групп у куратора";
+        }
+        if (user?.role === 'curator') {
+            return "Моих групп";
+        }
+        return "Всего групп";
+    };
+
+    // Загрузка списка кураторов (только для администратора)
+    useEffect(() => {
     if (user?.role === 'administrator') {
         const fetchCurators = async () => {
             try {
@@ -170,124 +193,60 @@ useEffect(() => {
         fetchCurators();
     }
 }, [user?.role, setSnackbar]);
-
-const getStudentGroupDisplayValue = () => {
-        if (loadingStats || !statistics || !statistics.studentGroupInfo) {
-            return '...';
-        }
-        const { type, value } = statistics.studentGroupInfo;
-        if (type === 'name') {
-            return value; // Просто возвращаем название группы
-        }
-        // Для type === 'count'
-        if (user?.role === 'administrator' && selectedCuratorId) {
-             return `${value}`; // Просто число, заголовок карточки уточнит контекст
-        }
-        if (user?.role === 'curator') {
-            return `${value}`; // Просто число, заголовок карточки уточнит контекст
-        }
-        // Админ смотрит всех
-        return `${value}`; // Просто число
-    };
-
-    const getStudentGroupDisplayTitle = () => {
-        if (authLoading || !statistics || !statistics.studentGroupInfo) {
-            return "Группы"; // Заголовок по умолчанию или во время загрузки
-        }
-        const { type } = statistics.studentGroupInfo;
-
-        if (type === 'name') {
-            return "Моя группа"; // Если отображается имя, то это одна группа куратора
-        }
-
-        // Для type === 'count'
-        if (user?.role === 'administrator' && selectedCuratorId) {
-            return "Групп у куратора";
-        }
-        if (user?.role === 'curator') {
-            return "Моих групп";
-        }
-        return "Всего групп"; // Админ смотрит всех
-    };
-
-    // Функция загрузки статистики
-const fetchStatistics = useCallback(async () => {
-        setLoadingStats(true);
-        setStatsError('');
-        try {
-            const params = {};
-            if (startDate && isValid(startDate)) {
-                params.startDate = format(startDate, 'yyyy-MM-dd');
-            }
-            if (endDate && isValid(endDate)) {
-                // Для корректного включения выбранной даты, если время не указано,
-                // бэкенд должен правильно обрабатывать endDate (например, < endDate + 1 день)
-                // или можно отправлять endDate как конец дня.
-                // Пока отправляем как есть, бэкенд обрабатывает "< endDate + 1 день" для SQL
-                params.endDate = format(endDate, 'yyyy-MM-dd');
-            }
-            if (user?.role === 'administrator' && selectedCuratorId) {
-                params.curatorId = selectedCuratorId;
-            }
-            // Если текущий пользователь куратор, его ID автоматически используется на бэкенде
-
-            const data = await getCuratorReportsStatistics(params);
-            setStatistics(data);
-        } catch (err) {
-            setStatsError(err.response?.data?.message || err.message || 'Не удалось загрузить статистику');
-        } finally {
-            setLoadingStats(false);
-        }
-    }, [startDate, endDate, selectedCuratorId, user?.role]); 
-
-    // Функция загрузки отчетов
-    const fetchReports = useCallback(async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const params = { page: page + 1, limit: rowsPerPage };
-            const data = await getCuratorReports(params);
-            setReports(data.reports || []);
-            setTotalItems(data.totalItems || 0);
-        } catch (err) {
-             setError(err.response?.data?.message || err.message || 'Не удалось загрузить список отчетов');
-             console.error("Fetch curator reports error:", err);
-        } finally {
-            setLoading(false);
-        }
-    }, [page, rowsPerPage]);
-
     
-    useEffect(() => {
-        fetchReports(); // Загрузка списка отчетов (не зависит от фильтров статистики)
-    }, [fetchReports]);
+    // Единая функция для загрузки всех данных страницы
+    const fetchData = useCallback(async () => {
+        setLoadingData(true);
+        setError('');
 
+        const params = {
+            page: page + 1,
+            limit: rowsPerPage,
+            curatorId: filters.selectedCuratorId || undefined,
+            startDate: filters.startDate && isValid(filters.startDate) ? format(filters.startDate, 'yyyy-MM-dd') : undefined,
+            endDate: filters.endDate && isValid(filters.endDate) ? format(filters.endDate, 'yyyy-MM-dd') : undefined,
+        };
+
+        try {
+            const [reportsData, statsData] = await Promise.all([
+                getCuratorReports(params),
+                getCuratorReportsStatistics(params)
+            ]);
+            setReports(reportsData.reports || []);
+            setTotalItems(reportsData.totalItems || 0);
+            setStatistics(statsData);
+        } catch (err) {
+            console.error("Failed to fetch data:", err);
+            setError('Не удалось загрузить данные. Пожалуйста, попробуйте обновить страницу.');
+        } finally {
+            setLoadingData(false);
+        }
+    }, [page, rowsPerPage, filters]);
+
+    // Основной хук для вызова загрузки данных при изменении зависимостей
     useEffect(() => {
-        fetchStatistics(); // Загрузка статистики (зависит от фильтров)
-    }, [fetchStatistics]); // fetchStatistics уже содержит нужные зависимости
- 
-    useEffect(() => {
-        fetchReports();
-        fetchStatistics();
-    }, [fetchReports, fetchStatistics]);
+        if (!authLoading) {
+            fetchData();
+        }
+    }, [authLoading, fetchData]);
+
+    // Обработчики
+    const handleFilterChange = (field, value) => {
+        setFilters(prev => ({ ...prev, [field]: value }));
+    };
 
     const handleApplyFilters = () => {
-        fetchStatistics(); // Просто перезапускаем загрузку статистики с текущими значениями фильтров
-    };
-
-    // Обработчики пагинации
-    const handleChangePage = (event, newPage) => {
-        setPage(newPage);
+        setPage(0); // Сбрасываем пагинацию
+        // fetchData вызовется автоматически, т.к. изменится filters, от которого зависит fetchData
     };
 
     const handleResetFilters = () => {
-        setStartDate(null);
-        setEndDate(null);
-        setSelectedCuratorId('');
-        // Немедленный вызов fetchStatistics здесь может быть избыточным,
-        // так как useEffect [fetchStatistics] среагирует на изменение состояний.
-        // Но для явного сброса можно и вызвать, если useEffect не перехватывает пустые значения так, как нужно.
-        // По факту, useEffect [fetchStatistics] сам вызовется из-за изменения selectedCuratorId, startDate, endDate
+        setFilters({ startDate: null, endDate: null, selectedCuratorId: '' });
+        setPage(0);
+    };
+
+    const handleChangePage = (event, newPage) => {
+        setPage(newPage);
     };
     
     const handleChangeRowsPerPage = (event) => {
@@ -295,9 +254,9 @@ const fetchStatistics = useCallback(async () => {
         setPage(0);
     };
 
-    // Обработчики удаления
     const handleDeleteClick = (report) => {
-        setReportToDelete({ id: report.reportId, title: report.reportTitle });
+        const title = report.RelatedEvent?.title ?? report.reportTitle ?? '';
+        setReportToDelete({ id: report.reportId, title });
         setOpenDeleteDialog(true);
     };
 
@@ -311,28 +270,18 @@ const fetchStatistics = useCallback(async () => {
         try {
             await deleteCuratorReport(reportToDelete.id);
             setSnackbar({ open: true, message: `Отчет "${reportToDelete.title}" удален`, severity: 'success' });
-            // Обновляем список:
-            const newTotalItems = totalItems - 1;
-            setTotalItems(newTotalItems);
-            setReports(prev => prev.filter(r => r.reportId !== reportToDelete.id));
-            const newTotalPages = Math.ceil(newTotalItems / rowsPerPage);
-            if (page > 0 && page >= newTotalPages) {
-                setPage(Math.max(0, newTotalPages - 1));
-            }
+            fetchData(); // Перезагружаем все данные после удаления
             handleCloseDeleteDialog();
         } catch (err) {
              const message = err.response?.data?.message || err.message || 'Не удалось удалить отчет';
              setSnackbar({ open: true, message: message, severity: 'error' });
-             console.error("Delete report error:", err);
              handleCloseDeleteDialog();
         }
     };
 
-    const handleCloseSnackbar = useCallback((event, reason) => {
-        if (reason === 'clickaway') {
-            return;
-        }
-        setSnackbar(prev => ({ ...prev, open: false }));
+    const handleCloseSnackbar = useCallback((event, reason) => { 
+        if (reason === 'clickaway') { return; } 
+        setSnackbar(prev => ({ ...prev, open: false })); 
     }, []);
 
     return (
@@ -349,40 +298,36 @@ const fetchStatistics = useCallback(async () => {
                     )}
                 </Box>
 
-                {/* Панель Фильтров для Статистики */}
                 <Paper sx={{ p: 2, mb: 3 }}>
-                    <Typography variant="h6" gutterBottom>Фильтры статистики</Typography>
+                    <Typography variant="h6" gutterBottom>Фильтры</Typography>
                     <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} sm={6} md={3}>
                             <DatePicker
                                 label="Дата начала"
-                                value={startDate}
-                                onChange={(newValue) => setStartDate(newValue)}
+                                value={filters.startDate}
+                                onChange={(newValue) => handleFilterChange('startDate', newValue)}
                                 slotProps={{ textField: { fullWidth: true, size: 'small' } }}
                             />
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
                             <DatePicker
                                 label="Дата окончания"
-                                value={endDate}
-                                onChange={(newValue) => setEndDate(newValue)}
+                                value={filters.endDate}
+                                onChange={(newValue) => handleFilterChange('endDate', newValue)}
                                 slotProps={{ textField: { fullWidth: true, size: 'small' } }}
-                                minDate={startDate || undefined} // Нельзя выбрать дату окончания раньше даты начала
+                                minDate={filters.startDate || undefined}
                             />
                         </Grid>
                         {user?.role === 'administrator' && (
                             <Grid item xs={12} sm={6} md={3}>
                                 <FormControl fullWidth size="small">
-                                    <InputLabel id="curator-select-label">Куратор</InputLabel>
+                                    <InputLabel>Куратор</InputLabel>
                                     <Select
-                                        labelId="curator-select-label"
-                                        value={selectedCuratorId}
+                                        value={filters.selectedCuratorId}
                                         label="Куратор"
-                                        onChange={(e) => setSelectedCuratorId(e.target.value)}
+                                        onChange={(e) => handleFilterChange('selectedCuratorId', e.target.value)}
                                     >
-                                        <MenuItem value="">
-                                            <em>Все кураторы</em>
-                                        </MenuItem>
+                                        <MenuItem value=""><em>Все кураторы</em></MenuItem>
                                         {curators.map((c) => (
                                             <MenuItem key={c.userId} value={c.userId}>{c.fullName}</MenuItem>
                                         ))}
@@ -390,185 +335,164 @@ const fetchStatistics = useCallback(async () => {
                                 </FormControl>
                             </Grid>
                         )}
-                        <Grid item xs={12} sm={6} md={user?.role === 'administrator' ? 3 : 6} sx={{display: 'flex', gap: 1}}>
-                            <Button
-                                variant="contained"
-                                onClick={handleApplyFilters}
-                                startIcon={<FilterListIcon />}
-                                sx={{ flexGrow: 1 }}
-                            >
+                        <Grid item xs={12} sm={6} md={3} sx={{display: 'flex', gap: 1}}>
+                            <Button variant="contained" onClick={handleApplyFilters} startIcon={<FilterListIcon />} sx={{ flexGrow: 1 }}>
                                 Применить
                             </Button>
-                             <Button
-                                variant="outlined"
-                                onClick={handleResetFilters}
-                                sx={{ flexGrow: 1 }}
-                            >
+                             <Button variant="outlined" onClick={handleResetFilters} sx={{ flexGrow: 1 }}>
                                 Сбросить
                             </Button>
                         </Grid>
                     </Grid>
                 </Paper>
 
-            {/* Секция Статистики */}
-            <Box sx={{ mb: 3 }}>
-                    <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
-                        Сводная статистика
-                    </Typography>
-                    {statsError && <Alert severity="error" sx={{ mb: 2 }}>{statsError}</Alert>}
-                    
-                    <Grid container spacing={1.5} sx={{ mb: 3 }}> {/* Уменьшен spacing */}
-                        {/* Основные 9 StatCard: xs={12} sm={6} (2 в ряд на sm и выше) */}
-                        <Grid item xs={12} sm={6}> 
-                            <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} loading={loadingStats} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Уникальных участников (в отчетах)" value={statistics?.totalUniqueParticipants ?? '...'} icon={<PeopleAltIcon />} loading={loadingStats}/>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Всего участий студентов (в отчетах)" value={statistics?.totalReportParticipations ?? '...'} icon={<HowToRegIcon />} loading={loadingStats}/>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Отчетов в этом месяце" value={statistics?.reportsThisMonth ?? '...'} icon={<EventNoteIcon />} loading={loadingStats}/>
-                        </Grid>
-                        
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Мероприятий с отчетами" value={statistics?.distinctEventsLinkedToReports ?? '...'} icon={<BarChartIcon />} loading={loadingStats}/>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Иностранные участники" value={statistics?.totalForeignerParticipants ?? '...'} icon={<PublicIcon />} loading={loadingStats}/>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard title="Несовершеннолетние" value={statistics?.totalMinorParticipants ?? '...'} icon={<ChildCareIcon />} loading={loadingStats}/>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <StatCard 
-                                title={getStudentGroupDisplayTitle()} 
-                                value={getStudentGroupDisplayValue()} 
-                                icon={<GroupsIcon />} 
-                                loading={loadingStats || authLoading} 
-                            />
-                        </Grid>
-                        <Grid item xs={12} sm={6}> 
-                            <StatCard 
-                                title={user?.role === 'administrator' && selectedCuratorId ? "Студентов у куратора" : (user?.role === 'curator' ? "Моих студентов" : "Всего студентов")} 
-                                value={statistics?.totalStudentsInFilteredGroups ?? '...'} 
-                                icon={<GroupIcon />} 
-                                loading={loadingStats} 
-                            />
-                        </Grid>
-                    </Grid>
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                {loadingData ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}><CircularProgress size={40} /></Box>
+                ) : (
+                    <>
+                        <Box sx={{ mb: 3 }}>
+                            <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
+                                Сводная статистика
+                            </Typography>
+                            <Grid container spacing={1.5} sx={{ mb: 3 }}>
+                                <Grid item xs={12} sm={6} md={4} lg={3}> 
+                                    <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={4} lg={3}>
+                                    <StatCard title="Уникальных участников" value={statistics?.totalUniqueParticipants ?? '...'} icon={<PeopleAltIcon />} />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={4} lg={3}>
+                                    <StatCard title="Всего участий" value={statistics?.totalReportParticipations ?? '...'} icon={<HowToRegIcon />} />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={4} lg={3}>
+                                    <StatCard 
+                                        title={getStudentGroupDisplayTitle()} 
+                                        value={getStudentGroupDisplayValue()} 
+                                        icon={<GroupsIcon />} 
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={4} lg={3}> 
+                                    <StatCard 
+                                        title={user?.role === 'administrator' && filters.selectedCuratorId ? "Студентов у куратора" : (user?.role === 'curator' ? "Моих студентов" : "Всего студентов")} 
+                                        value={statistics?.totalStudentsInFilteredGroups ?? '...'} 
+                                        icon={<GroupIcon />}
+                                    />
+                                </Grid>
+                            </Grid>
+                            <Typography variant="h6" gutterBottom component="div" sx={{ mt: 3, mb: 1 }}>
+                                Детализация по мероприятиям
+                            </Typography>
+                            <Grid container spacing={1.5}>
+                                <CategoryStatCard title="По Направлениям" data={statistics?.reportsByDirection} itemNameKey="directionName" itemCountKey="reportCount" icon={<CategoryIcon />} />
+                                <CategoryStatCard title="По Уровням" data={statistics?.reportsByLevel} itemNameKey="levelName" itemCountKey="reportCount" icon={<CategoryIcon />} />
+                                <CategoryStatCard title="По Форматам" data={statistics?.reportsByFormat} itemNameKey="formatName" itemCountKey="reportCount" icon={<CategoryIcon />} />
+                            </Grid>
+                        </Box>
 
-                    {/* Детализация по категориям мероприятий */}
-                    <Typography variant="h6" gutterBottom component="div" sx={{ mt: 3, mb: 1 }}>
-                        Детализация по мероприятиям
-                    </Typography>
-                     <Grid container spacing={1.5}> {/* Уменьшен spacing */}
-                        {/* CategoryStatCard: xs={12} sm={6} md={4} (на md и выше - 3 в ряд) */}
-                        <Grid item xs={12} sm={6} md={4}>
-                            <CategoryStatCard title="По Направлениям" data={statistics?.reportsByDirection} itemNameKey="directionName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={4}>
-                            <CategoryStatCard title="По Уровням" data={statistics?.reportsByLevel} itemNameKey="levelName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={4}>
-                            <CategoryStatCard title="По Форматам" data={statistics?.reportsByFormat} itemNameKey="formatName" itemCountKey="reportCount" icon={<CategoryIcon />} loading={loadingStats} />
-                        </Grid>
-                    </Grid>
-                </Box>
-                <Divider sx={{ mb: 3 }} />
+                        <Divider sx={{ mb: 3 }} />
 
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            {loading && !statsError ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
-            ) : !reports.length && !loading ? (
-                 <Typography sx={{ textAlign: 'center', p: 3 }}>
-                     {user?.role === 'administrator' ? 'Отчеты еще не созданы.' : 'У вас пока нет отчетов.'}
-                 </Typography>
-            ) : (
-                <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                    <TableContainer sx={{ maxHeight: 650 }}>
-                        <Table stickyHeader size="small">
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell sx={{minWidth: 250}}>Название / Тема</TableCell>
-                                    <TableCell>Дата проведения</TableCell>
-                                    {user?.role === 'administrator' && <TableCell>Куратор</TableCell>}
-                                    <TableCell sx={{minWidth: 150}}>Место проведения</TableCell>
-                                    <TableCell align="right">Действия</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {reports.map((report) => (
-                                    <TableRow hover key={report.reportId}>
-                                        <TableCell sx={{maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                                            <Tooltip title={report.reportTitle}>
-                                                 <RouterLink to={`/curator-reports/${report.reportId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                                                    {report.reportTitle}
-                                                 </RouterLink>
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell>
-                                            {report.reportDate ? format(new Date(report.reportDate), 'dd.MM.yyyy', { locale: ru }) : '-'}
-                                        </TableCell>
-                                        {user?.role === 'administrator' && (
-                                            <TableCell>{report.Curator?.fullName || 'N/A'}</TableCell>
-                                        )}
-                                        <TableCell sx={{maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                                            {report.locationText || '-'}
-                                         </TableCell>
-                                        <TableCell align="right">
-                                            <Tooltip title="Просмотр отчета">
-                                                <IconButton size="small" component={RouterLink} to={`/curator-reports/${report.reportId}`}>
-                                                    <VisibilityIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                             {(user?.role === 'administrator' || user?.id === report.curatorUserId) && (
-                                                <Tooltip title="Удалить отчет">
-                                                     <IconButton size="small" onClick={() => handleDeleteClick(report)} color="error" sx={{ ml: 1 }}>
-                                                         <DeleteIcon />
-                                                     </IconButton>
-                                                 </Tooltip>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                    <TablePagination
-                        rowsPerPageOptions={[10, 25, 50]}
-                        component="div"
-                        count={totalItems}
-                        rowsPerPage={rowsPerPage}
-                        page={page}
-                        onPageChange={handleChangePage}
-                        onRowsPerPageChange={handleChangeRowsPerPage}
-                        labelRowsPerPage="Отчетов на странице:"
-                        labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `больше чем ${to}`}`}
-                    />
-                </Paper>
-            )}
+                        {!reports.length ? (
+                             <Typography sx={{ textAlign: 'center', p: 3 }}>
+                                 Нет отчетов, соответствующих вашим фильтрам.
+                             </Typography>
+                        ) : (
+                            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+                                <TableContainer sx={{ maxHeight: 650 }}>
+                                    <Table stickyHeader size="small">
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell sx={{minWidth: 200}}>Название / Тема</TableCell>
+                                                <TableCell>Дата проведения</TableCell>
+                                                <TableCell sx={{minWidth: 150}}>Направление</TableCell>
+                                                <TableCell sx={{minWidth: 150}}>Место проведения</TableCell>
+                                                {user?.role === 'administrator' && <TableCell>Куратор</TableCell>}
+                                                <TableCell align="right">Действия</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {reports.map((report) => {
+                                                const title = report.RelatedEvent?.title ?? report.reportTitle ?? 'Без названия';
+                                                const location = report.RelatedEvent?.locationText ?? report.locationText ?? '-';
+                                                const direction = report.RelatedEvent?.Direction?.name ?? report.directionText ?? '-';
+                                                
+                                                return (
+                                                    <TableRow hover key={report.reportId}>
+                                                        <TableCell sx={{maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                                            <Tooltip title={title}>
+                                                                 <RouterLink to={`/curator-reports/${report.reportId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                                                    {title}
+                                                                 </RouterLink>
+                                                            </Tooltip>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {report.reportDate ? format(new Date(report.reportDate), 'dd.MM.yyyy', { locale: ru }) : '-'}
+                                                        </TableCell>
+                                                        <TableCell sx={{maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                                            <Chip label={direction} size="small" />
+                                                        </TableCell>
+                                                        <TableCell sx={{maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                                            {location}
+                                                        </TableCell>
+                                                        {user?.role === 'administrator' && (
+                                                            <TableCell>{report.Curator?.fullName || 'N/A'}</TableCell>
+                                                        )}
+                                                        <TableCell align="right">
+                                                            <Tooltip title="Просмотр отчета">
+                                                                <IconButton size="small" component={RouterLink} to={`/curator-reports/${report.reportId}`}>
+                                                                    <VisibilityIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                             {(user?.role === 'administrator' || user?.id === report.curatorUserId) && (
+                                                                <Tooltip title="Удалить отчет">
+                                                                     <IconButton size="small" onClick={() => handleDeleteClick(report)} color="error" sx={{ ml: 1 }}>
+                                                                         <DeleteIcon />
+                                                                     </IconButton>
+                                                                 </Tooltip>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                                <TablePagination
+                                    rowsPerPageOptions={[10, 25, 50]}
+                                    component="div"
+                                    count={totalItems}
+                                    rowsPerPage={rowsPerPage}
+                                    page={page}
+                                    onPageChange={handleChangePage}
+                                    onRowsPerPageChange={handleChangeRowsPerPage}
+                                    labelRowsPerPage="Отчетов на странице:"
+                                    labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `больше чем ${to}`}`}
+                                />
+                            </Paper>
+                        )}
+                    </>
+                )}
 
-             <ConfirmationDialog
-                open={openDeleteDialog}
-                onClose={handleCloseDeleteDialog}
-                onConfirm={handleConfirmDelete}
-                title="Удалить отчет?"
-                message={`Вы уверены, что хотите удалить отчет "${reportToDelete?.title || ''}"?`}
-             />
-             <Snackbar
-                open={snackbar.open}
-                autoHideDuration={6000}
-                onClose={handleCloseSnackbar}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
+                <ConfirmationDialog
+                    open={openDeleteDialog}
+                    onClose={handleCloseDeleteDialog}
+                    onConfirm={handleConfirmDelete}
+                    title="Удалить отчет?"
+                    message={`Вы уверены, что хотите удалить отчет "${reportToDelete?.title || ''}"?`}
+                 />
+                 <Snackbar
+                    open={snackbar.open}
+                    autoHideDuration={6000}
+                    onClose={handleCloseSnackbar}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                >
+                    <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
+                        {snackbar.message}
+                    </Alert>
+                </Snackbar>
             </Container>
         </LocalizationProvider>
     );
 }
+
 export default CuratorReportsPage;
