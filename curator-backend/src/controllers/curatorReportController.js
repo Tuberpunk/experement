@@ -8,7 +8,8 @@ const {
     EventDirection,
     EventLevel,
     EventFormat,
-    sequelize
+    sequelize, 
+    StudentTag
 } = require('../models');
 const { Op } = require('sequelize');
 
@@ -415,6 +416,70 @@ exports.getReportsStatistics = async (req, res) => {
         res.status(500).json({ message: 'Ошибка сервера при получении статистики по отчетам' });
     }
     
+};
+
+exports.getAggregatedReportData = async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const { id: userId, role } = req.user;
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ message: 'Необходимо указать начальную и конечную дату периода.' });
+    }
+
+    try {
+        const targetUserId = (role === 'administrator' && req.query.forCuratorId) ? parseInt(req.query.forCuratorId, 10) : userId;
+        
+        // Условие для фильтрации отчетов, которое будет использоваться в нескольких запросах
+        const reportWhereCondition = {
+            curatorUserId: targetUserId,
+            reportDate: { [Op.between]: [new Date(startDate), new Date(endDate)] }
+        };
+
+        // 1. Информация о кураторе и группе
+        const curator = await User.findByPk(targetUserId, {
+            include: [{ model: StudentGroup, as: 'ManagedGroups' }]
+        });
+        if (!curator) return res.status(404).json({ message: 'Куратор не найден.' });
+        const group = curator.ManagedGroups && curator.ManagedGroups[0];
+        const groupId = group ? group.groupId : null;
+        
+        // 2. Считаем студентов
+        const studentCount = groupId ? await Student.count({ where: { groupId, isActive: true } }) : 0;
+        
+        // 3. Собираем все отчеты за период
+        const reports = await CuratorReport.findAll({
+            where: reportWhereCondition,
+            order: [['reportDate', 'ASC']]
+        });
+        
+        const participationInEvents = reports
+            .filter(r => r.eventId)
+            .map(r => r.reportTitle);
+            
+        // 4. ДОБАВЛЕНО: Собираем детализацию по мероприятиям (уровни, форматы, направления)
+        const reportsByLevel = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Level.name'), 'levelName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventLevel, as: 'Level', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Level.name')], raw: true });
+        const reportsByFormat = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Format.name'), 'formatName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventFormat, as: 'Format', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Format.name')], raw: true });
+        const reportsByDirection = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Direction.name'), 'directionName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventDirection, as: 'Direction', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Direction.name')], raw: true });
+
+
+        // 5. Формируем итоговые данные
+        const finalData = {
+            groupName: group ? `${group.groupName}` : 'Группа не найдена',
+            studentCount: studentCount,
+            eventParticipationReport: participationInEvents.length > 0 ? participationInEvents.map(e => `- ${e}`).join('\n') : 'Участие в мероприятиях не зафиксировано.',
+            curatorName: curator.fullName,
+            // Добавляем новые данные для детализации
+            reportsByLevel,
+            reportsByFormat,
+            reportsByDirection,
+        };
+
+        res.json(finalData);
+
+    } catch (error) {
+        console.error('Error fetching aggregated report data:', error);
+        res.status(500).json({ message: 'Ошибка сервера при сборе данных для отчета' });
+    }
 };
 
 // PUT /api/curator-reports/:id - Обновление отчета

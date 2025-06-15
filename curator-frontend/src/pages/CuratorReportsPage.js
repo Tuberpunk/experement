@@ -22,10 +22,12 @@ import GroupsIcon from '@mui/icons-material/Groups';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import CategoryIcon from '@mui/icons-material/Category';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import DownloadIcon from '@mui/icons-material/Download';
 
 import { useAuth } from '../contexts/AuthContext';
 import { getCuratorReports, deleteCuratorReport, getCuratorReportsStatistics } from '../api/curatorReports';
 import { getUsers } from '../api/users';
+import FinalReportDialog from '../components/FinalReportDialog';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFnsV3';
@@ -115,8 +117,8 @@ function CuratorReportsPage() {
     const [statistics, setStatistics] = useState(null);
     const [curators, setCurators] = useState([]);
     
-    // Состояния для загрузки и ошибок
-    const [loadingData, setLoadingData] = useState(true); // Единое состояние загрузки
+    // Единые состояния для загрузки и ошибок
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState('');
     
     // Состояния для фильтров
@@ -135,8 +137,9 @@ function CuratorReportsPage() {
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [reportToDelete, setReportToDelete] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+    const [isReportDialogOpen, setReportDialogOpen] = useState(false);
 
-    // Вспомогательные функции для отображения (внутри компонента)
+    // Вспомогательные функции для отображения
     const getStudentGroupDisplayValue = () => {
         if (loadingData || !statistics || !statistics.studentGroupInfo) {
             return '...';
@@ -162,7 +165,7 @@ function CuratorReportsPage() {
         return "Всего групп";
     };
 
-    // Загрузка списка кураторов (только для администратора)
+    // Загрузка списка кураторов
     useEffect(() => {
     if (user?.role === 'administrator') {
         const fetchCurators = async () => {
@@ -223,7 +226,7 @@ function CuratorReportsPage() {
         }
     }, [page, rowsPerPage, filters]);
 
-    // Основной хук для вызова загрузки данных при изменении зависимостей
+    // Основной хук для вызова загрузки данных
     useEffect(() => {
         if (!authLoading) {
             fetchData();
@@ -232,12 +235,9 @@ function CuratorReportsPage() {
 
     // Обработчики
     const handleFilterChange = (field, value) => {
+        // При изменении фильтра сбрасываем на первую страницу
+        setPage(0);
         setFilters(prev => ({ ...prev, [field]: value }));
-    };
-
-    const handleApplyFilters = () => {
-        setPage(0); // Сбрасываем пагинацию
-        // fetchData вызовется автоматически, т.к. изменится filters, от которого зависит fetchData
     };
 
     const handleResetFilters = () => {
@@ -273,7 +273,7 @@ function CuratorReportsPage() {
             fetchData(); // Перезагружаем все данные после удаления
             handleCloseDeleteDialog();
         } catch (err) {
-             const message = err.response?.data?.message || err.message || 'Не удалось удалить отчет';
+             const message = err.response?.data?.message || 'Не удалось удалить отчет';
              setSnackbar({ open: true, message: message, severity: 'error' });
              handleCloseDeleteDialog();
         }
@@ -287,15 +287,22 @@ function CuratorReportsPage() {
     return (
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
             <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
                     <Typography variant="h4" component="h1">
                         {user?.role === 'administrator' ? 'Отчеты Кураторов' : 'Мои Отчеты'}
                     </Typography>
-                    {(user?.role === 'curator' || user?.role === 'administrator') && (
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button 
+                            variant="outlined" 
+                            startIcon={<DownloadIcon />}
+                            onClick={() => setReportDialogOpen(true)}
+                        >
+                            Сформировать отчет
+                        </Button>
                         <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/curator-reports/new">
                             Добавить отчет
                         </Button>
-                    )}
+                    </Box>
                 </Box>
 
                 <Paper sx={{ p: 2, mb: 3 }}>
@@ -319,7 +326,7 @@ function CuratorReportsPage() {
                             />
                         </Grid>
                         {user?.role === 'administrator' && (
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={4}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Куратор</InputLabel>
                                     <Select
@@ -335,11 +342,12 @@ function CuratorReportsPage() {
                                 </FormControl>
                             </Grid>
                         )}
-                        <Grid item xs={12} sm={6} md={3} sx={{display: 'flex', gap: 1}}>
-                            <Button variant="contained" onClick={handleApplyFilters} startIcon={<FilterListIcon />} sx={{ flexGrow: 1 }}>
-                                Применить
-                            </Button>
-                             <Button variant="outlined" onClick={handleResetFilters} sx={{ flexGrow: 1 }}>
+                        <Grid item xs={12} sm={6} md>
+                             <Button
+                                variant="outlined"
+                                onClick={handleResetFilters}
+                                fullWidth
+                            >
                                 Сбросить
                             </Button>
                         </Grid>
@@ -355,7 +363,7 @@ function CuratorReportsPage() {
                             <Typography variant="h5" gutterBottom component="div" sx={{ mb: 2 }}>
                                 Сводная статистика
                             </Typography>
-                            <Grid container spacing={1.5} sx={{ mb: 3 }}>
+                            <Grid container spacing={2} sx={{ mb: 3 }}>
                                 <Grid item xs={12} sm={6} md={4} lg={3}> 
                                     <StatCard title="Всего отчетов" value={statistics?.totalReports ?? '...'} icon={<AssessmentIcon />} />
                                 </Grid>
@@ -383,7 +391,7 @@ function CuratorReportsPage() {
                             <Typography variant="h6" gutterBottom component="div" sx={{ mt: 3, mb: 1 }}>
                                 Детализация по мероприятиям
                             </Typography>
-                            <Grid container spacing={1.5}>
+                            <Grid container spacing={2}>
                                 <CategoryStatCard title="По Направлениям" data={statistics?.reportsByDirection} itemNameKey="directionName" itemCountKey="reportCount" icon={<CategoryIcon />} />
                                 <CategoryStatCard title="По Уровням" data={statistics?.reportsByLevel} itemNameKey="levelName" itemCountKey="reportCount" icon={<CategoryIcon />} />
                                 <CategoryStatCard title="По Форматам" data={statistics?.reportsByFormat} itemNameKey="formatName" itemCountKey="reportCount" icon={<CategoryIcon />} />
@@ -490,6 +498,14 @@ function CuratorReportsPage() {
                         {snackbar.message}
                     </Alert>
                 </Snackbar>
+
+                {isReportDialogOpen && (
+                    <FinalReportDialog
+                        open={isReportDialogOpen}
+                        onClose={() => setReportDialogOpen(false)}
+                        forCuratorId={user?.role === 'administrator' ? filters.selectedCuratorId : undefined}
+                    />
+                )} 
             </Container>
         </LocalizationProvider>
     );

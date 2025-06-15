@@ -73,3 +73,14 @@ export const getCuratorReportsStatistics = async (params = {}) => { // Прин�
         throw error;
     }
 };
+
+export const getAggregatedReportData = async (params) => {
+    // params = { startDate, endDate, forCuratorId? }
+    try {
+        const response = await apiClient.get('/curator-reports/aggregated-data', { params });
+        return response.data;
+    } catch (error) {
+        console.error("API Error fetching aggregated report data:", error);
+        throw error;
+    }
+};
