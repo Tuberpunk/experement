@@ -1,81 +1,84 @@
-// src/controllers/lookupController.js
+// Полный путь: src/controllers/lookupController.js
 const {
-    Role, // Роли пользователей
-    EventDirection, // Направления мероприятий
-    EventLevel, // Уровни мероприятий
-    EventFormat, // Форматы мероприятий
-    ParticipantCategory, // Категории участников
-    FundingSource, // Источники финансирования
-    StudentTag, // Теги студентов (например, "группа риска", "активист")
-    StudentGroup // Учебные группы
+    Role,
+    EventDirection,
+    EventLevel,
+    Event,
+    EventFormat,
+    ParticipantCategory,
+    FundingSource,
+    StudentTag,
+    StudentGroup,
+    User, // User может понадобиться для include в будущем
+    Sequelize // Импортируем для Op
 } = require('../models');
-const { Op } = require('sequelize'); // Может понадобиться для проверки уникальности при обновлении
+const { Op } = Sequelize;
 
-
+// Вспомогательная функция для получения модели и опций на основе типа справочника
 const getModelAndOptions = (lookupType) => {
     switch (lookupType) {
         case 'Role':
             return {
                 model: Role,
-                // ИСПРАВЛЕНО: используем атрибуты модели 'roleId' и 'roleName'
-                // Sequelize автоматически использует 'field' для имен колонок в БД ('role_id', 'role_name')
-                // Фронтенд получит поля 'id' и 'name'
-                attributes: [
-                    ['roleId', 'id'],
-                    ['roleName', 'name'] 
-                ],
-                order: [['roleName', 'ASC']] // Сортируем по атрибуту модели 'roleName'
+                attributes: [['roleId', 'id'], ['roleName', 'name']],
+                order: [['roleName', 'ASC']]
             };
         case 'EventDirection':
             return {
                 model: EventDirection,
-                attributes: [['directionId', 'id'], 'name'],
+                attributes: [['directionId', 'id'], ['name', 'name']],
                 order: [['name', 'ASC']]
             };
         case 'EventLevel':
             return {
                 model: EventLevel,
-                attributes: [['levelId', 'id'], 'name'],
+                attributes: [['levelId', 'id'], ['name', 'name']],
                 order: [['name', 'ASC']]
             };
         case 'EventFormat':
             return {
                 model: EventFormat,
-                attributes: [['formatId', 'id'], 'name'],
+                attributes: [['formatId', 'id'], ['name', 'name']],
                 order: [['name', 'ASC']]
             };
         case 'ParticipantCategory':
             return {
                 model: ParticipantCategory,
-                attributes: [['categoryId', 'id'], 'name'],
+                attributes: [['categoryId', 'id'], ['name', 'name']],
                 order: [['name', 'ASC']]
             };
         case 'FundingSource':
             return {
                 model: FundingSource,
-                attributes: [['sourceId', 'id'], 'name'],
+                attributes: [['sourceId', 'id'], ['name', 'name']],
                 order: [['name', 'ASC']]
             };
         case 'StudentTag':
             return {
                 model: StudentTag,
-                attributes: [['tagId', 'id'], 'name'],
-                order: [['name', 'ASC']]
+                attributes: [['tagId', 'id'], ['tagName', 'name']], // Используем tagName, но возвращаем как name
+                order: [['tagName', 'ASC']]
             };
-        case 'StudentGroup': // Добавлен кейс для учебных групп
+        case 'StudentGroup':
              return {
                 model: StudentGroup,
-                attributes: [['groupId', 'id'], 'groupName', 'curatorUserId'], // curatorUserId может быть полезен для фильтрации
-                // Если нужно также имя куратора:
-                // include: [{ model: User, as: 'Curator', attributes: ['fullName'] }],
+                attributes: [['groupId', 'id'], ['groupName', 'name']], // Возвращаем groupName как name
                 order: [['groupName', 'ASC']]
             };
-        // Добавьте другие кейсы по мере необходимости
+case 'Event':
+            return {
+                model: Event,
+                // ИСПРАВЛЕНО: используем правильные имена атрибутов из модели Event
+                // Атрибут event_id (первичный ключ) и title
+                attributes: [['event_id', 'id'], ['title', 'name']],
+                order: [['startDate', 'DESC']]
+            };
         default:
             return null;
     }
 };
 
+// ЕДИНЫЙ ЭКСПОРТИРУЕМЫЙ МЕТОД для получения любого справочника
 exports.getAll = async (req, res) => {
     const { type } = req.params;
     const modelAndOptions = getModelAndOptions(type);
@@ -84,19 +87,77 @@ exports.getAll = async (req, res) => {
         return res.status(400).json({ message: 'Недопустимый тип справочника' });
     }
 
-    const { model, attributes, order, include, where } = modelAndOptions;
+    const { model, attributes, order } = modelAndOptions;
 
     try {
         const items = await model.findAll({
-            attributes: attributes || undefined, // Если attributes не заданы, Sequelize выберет все поля
-            order: order || undefined,
-            include: include || undefined,
-            where: where || undefined,
+            attributes: attributes,
+            order: order,
         });
         res.json(items);
     } catch (error) {
         console.error(`Error fetching ${type}:`, error);
         res.status(500).json({ message: `Не удалось загрузить список ${type}` });
+    }
+};
+
+const createLookupItem = async (req, res, Model, nameField = 'name') => {
+    const { name } = req.body;
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ message: 'Название не может быть пустым.' });
+    }
+    try {
+        const existingItem = await Model.findOne({ where: { [nameField]: name.trim() } });
+        if (existingItem) {
+            return res.status(409).json({ message: 'Запись с таким названием уже существует.' });
+        }
+        const newItem = await Model.create({ [nameField]: name.trim() });
+        res.status(201).json(newItem);
+    } catch (error) {
+        console.error(`Error creating ${Model.name}:`, error);
+        res.status(500).json({ message: `Ошибка сервера при создании записи.` });
+    }
+};
+const updateLookupItem = async (req, res, Model, nameField = 'name') => {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ message: 'Название не может быть пустым.' });
+    }
+    try {
+        const item = await Model.findByPk(id);
+        if (!item) {
+            return res.status(404).json({ message: 'Запись не найдена.' });
+        }
+        const existingItem = await Model.findOne({ where: { [nameField]: name.trim(), [Model.primaryKeyAttribute]: { [Op.ne]: id } } });
+        if (existingItem) {
+            return res.status(409).json({ message: 'Запись с таким названием уже существует.' });
+        }
+        item[nameField] = name.trim();
+        await item.save();
+        res.json(item);
+    } catch (error) {
+        console.error(`Error updating ${Model.name}:`, error);
+        res.status(500).json({ message: `Ошибка сервера при обновлении записи.` });
+    }
+};
+
+// Общая функция для удаления
+const deleteLookupItem = async (req, res, Model) => {
+    const { id } = req.params;
+    try {
+        const item = await Model.findByPk(id);
+        if (!item) {
+            return res.status(404).json({ message: 'Запись не найдена.' });
+        }
+        await item.destroy();
+        res.status(204).send();
+    } catch (error) {
+        console.error(`Error deleting ${Model.name}:`, error);
+        if (error.name === 'SequelizeForeignKeyConstraintError') {
+            return res.status(409).json({ message: 'Невозможно удалить запись, так как она используется в других частях системы.' });
+        }
+        res.status(500).json({ message: `Ошибка сервера при удалении записи.` });
     }
 };
 
@@ -144,6 +205,21 @@ exports.getParticipantCategories = (req, res) => getLookupData(ParticipantCatego
 exports.getFundingSources = (req, res) => getLookupData(FundingSource, req, res);
 exports.getStudentTags = (req, res) => getLookupData(StudentTag, req, res);
 exports.getRoles = (req, res) => getLookupData(Role, req, res);
+exports.createEventDirection = (req, res) => createLookupItem(req, res, EventDirection);
+exports.updateEventDirection = (req, res) => updateLookupItem(req, res, EventDirection);
+exports.deleteEventDirection = (req, res) => deleteLookupItem(req, res, EventDirection);
+
+exports.createEventLevel = (req, res) => createLookupItem(req, res, EventLevel);
+exports.updateEventLevel = (req, res) => updateLookupItem(req, res, EventLevel);
+exports.deleteEventLevel = (req, res) => deleteLookupItem(req, res, EventLevel);
+
+exports.createEventFormat = (req, res) => createLookupItem(req, res, EventFormat);
+exports.updateEventFormat = (req, res) => updateLookupItem(req, res, EventFormat);
+exports.deleteEventFormat = (req, res) => deleteLookupItem(req, res, EventFormat);
+
+exports.createStudentTag = (req, res) => createLookupItem(req, res, StudentTag, 'tagName');
+exports.updateStudentTag = (req, res) => updateLookupItem(req, res, StudentTag, 'tagName');
+exports.deleteStudentTag = (req, res) => deleteLookupItem(req, res, StudentTag);
 
 exports.createStudentTag = async (req, res) => {
     const { name } = req.body; // Ожидаем 'name' от фронтенда
@@ -554,3 +630,4 @@ exports.deleteFundingSource = async (req, res) => {
         res.status(500).json({ message: 'Ошибка сервера при удалении источника финансирования.' });
     }
 };
+

@@ -182,7 +182,10 @@ function ManageUsersPage() {
                     <TablePagination
                          rowsPerPageOptions={[15, 30, 50, 100]} component="div" count={totalItems}
                          rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage}
-                         labelRowsPerPage="Пользователей на странице:" labelDisplayedRows={({ from, to, count }) => `<span class="math-inline">\{from\}–</span>{to} из ${count !== -1 ? count : `больше чем ${to}`}`}
+                            labelRowsPerPage="Пользователей на странице:"
+                            labelDisplayedRows={({ from, to, count }) => 
+                            `${from}–${to} из ${count !== -1 ? count : `больше чем ${to}`}`
+                            }
                     />
                 </Paper>
             )}

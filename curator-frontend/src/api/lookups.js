@@ -54,6 +54,18 @@ export const deleteStudentTag = async (id) => {
     }
 };
 
+export const getLookups = async (type) => {
+    try {
+        // Делаем запрос на универсальный эндпоинт /api/lookups/:type
+        const response = await apiClient.get(`/lookups/${type}`);
+        // Ожидаем, что бэкенд вернет массив объектов [{ id, name }]
+        return response.data;
+    } catch (error) {
+        console.error(`API Error fetching lookup for type ${type}:`, error);
+        throw error;
+    }
+};
+
 export const createEventDirection = async (data) => {
     const response = await apiClient.post('/lookups/event-directions', data);
     return response.data;

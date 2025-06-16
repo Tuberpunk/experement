@@ -40,5 +40,5 @@ router.delete('/participant-categories/:id', authenticateToken, isAdmin, lookupC
 router.post('/funding-sources', authenticateToken, isAdmin, lookupController.createFundingSource);
 router.put('/funding-sources/:id', authenticateToken, isAdmin, lookupController.updateFundingSource);
 router.delete('/funding-sources/:id', authenticateToken, isAdmin, lookupController.deleteFundingSource);
-
+router.get('/:type', authenticateToken, lookupController.getAll);
 module.exports = router;

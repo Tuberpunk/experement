@@ -159,21 +159,6 @@ function CuratorReportForm() {
                          <Grid item xs={12} md={4}>
                               <Controller name="reportDate" control={control} render={({ field }) => (<DatePicker {...field} label="Дата проведения *" value={field.value ? dayjs(field.value) : null} onChange={(date) => field.onChange(date)} disableFuture maxDate={dayjs()} slotProps={{ textField: { fullWidth: true, required: true, error: !!errors.reportDate, helperText: errors.reportDate?.message } }} />)} />
                          </Grid>
-                         <Grid item xs={12} sm={6}>
-                             <Controller name="locationText" control={control} render={({ field }) => <TextField {...field} label="Место проведения" fullWidth />} />
-                         </Grid>
-                         <Grid item xs={12} sm={6}>
-                              <Controller name="directionText" control={control} render={({ field }) => <TextField {...field} label="Направление работы (напр., патриотическое)" fullWidth />} />
-                         </Grid>
-                          <Grid item xs={12}>
-                               <Controller name="invitedGuestsInfo" control={control} render={({ field }) => <TextField {...field} label="Приглашенные (ФИО, должность, организация)" fullWidth multiline rows={2} />} />
-                          </Grid>
-                          <Grid item xs={6} sm={3}>
-                               <Controller name="foreignerCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во иностранцев" type="number" fullWidth error={!!errors.foreignerCount} helperText={errors.foreignerCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
-                          </Grid>
-                           <Grid item xs={6} sm={3}>
-                              <Controller name="minorCount" control={control} render={({ field }) => <TextField {...field} label="Кол-во несоверш." type="number" fullWidth error={!!errors.minorCount} helperText={errors.minorCount?.message} InputProps={{ inputProps: { min: 0 } }} />} />
-                           </Grid>
                             <Grid item xs={12} sm={6}>
                                <Controller name="durationMinutes" control={control} render={({ field }) => <TextField {...field} label="Продолжительность (минут)" type="number" fullWidth error={!!errors.durationMinutes} helperText={errors.durationMinutes?.message} InputProps={{ inputProps: { min: 0 } }} />} />
                            </Grid>
@@ -204,13 +189,10 @@ function CuratorReportForm() {
 
                            {/* --- Ссылки и опциональная привязка к мероприятию --- */}
                            <Grid item xs={12}>
-                               <Controller name="mediaReferences" control={control} render={({ field }) => <TextField {...field} label="Ссылки на фото/публикации" fullWidth multiline rows={2} />} />
-                           </Grid>
-                           <Grid item xs={12}>
                                 <FormControl fullWidth error={!!errors.eventId} size="small" disabled={loadingLookups}>
                                     <InputLabel id="event-link-report-label">Связать с мероприятием (необязательно)</InputLabel>
                                     <Controller name="eventId" control={control} defaultValue={passedEventId || ""} render={({ field }) => (
-                                        <Select {...field} labelId="event-link-report-label" label="Связать с мероприятием (необязательно)">
+                                        <Select {...field} labelId="event-link-report-label" label="Связать с мероприятием">
                                             <MenuItem value=""><em>Не связано</em></MenuItem>
                                              {eventsList.map(e => (
                                                  <MenuItem key={e.eventId} value={e.eventId}>

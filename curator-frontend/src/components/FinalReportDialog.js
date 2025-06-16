@@ -12,14 +12,26 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getAggregatedReportData } from '../api/curatorReports';
-import { Roboto } from '../assets/fonts/Roboto-Regular';
+import { Roboto } from '../assets/fonts/Roboto-Regular'; // Убедитесь, что у вас есть этот файл
 
 const FinalReportDialog = ({ open, onClose, forCuratorId }) => {
     const [startDate, setStartDate] = useState(null);
     const [endDate, setEndDate] = useState(null);
-    const [deanName, setDeanName] = useState(''); // ИЗМЕНЕНО: Добавлено состояние для ФИО декана
+    
+    // Состояние для полей, вводимых вручную
+    const [manualData, setManualData] = useState({
+        studentsStartCount: '', // Пункт 1
+        academicDebtCount: '', // Пункт 3
+        deanName: ''
+    });
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setManualData(prev => ({ ...prev, [name]: value }));
+    };
 
     const handleGenerateReport = async () => {
         if (!startDate || !endDate) {
@@ -44,30 +56,46 @@ const FinalReportDialog = ({ open, onClose, forCuratorId }) => {
             doc.addFont("Roboto-Regular.ttf", "Roboto", "bold");
             doc.setFont("Roboto");
 
-            // ИЗМЕНЕНО: Формируем заголовок с датами
-            const formattedStartDate = format(startDate, 'dd.MM.yyyy');
-            const formattedEndDate = format(endDate, 'dd.MM.yyyy');
+            // --- Заполнение PDF по новому шаблону ---
             doc.setFontSize(14);
             doc.text('ОТЧЕТ О ДЕЯТЕЛЬНОСТИ КУРАТОРА УЧЕБНОЙ ГРУППЫ', doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
             doc.setFontSize(12);
             doc.text(apiData.groupName, doc.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
-            doc.text(`за период с ${formattedStartDate} по ${formattedEndDate}`, doc.internal.pageSize.getWidth() / 2, 36, { align: 'center' });
             
-            let yPos = 50; // Начинаем ниже
+            let yPos = 45;
             doc.setFontSize(11);
 
-            // ИЗМЕНЕНО: Пункт 1
-            doc.setFont("Roboto", "bold");
-            doc.text(`1. Общее количество обучающихся в группе:`, 15, yPos);
+            // Функция для простого пункта "заголовок: значение"
+            const addReportItem = (number, text, value) => {
+                doc.setFont("Roboto", "normal");
+                doc.text(`${number}. ${text}:`, 15, yPos);
+                doc.text(String(value || '0'), 150, yPos);
+                yPos += 8;
+            };
+            
+            // Функция для многострочного пункта
+            const addMultiLineItem = (number, title, text) => {
+                doc.setFont("Roboto", "normal");
+                doc.text(`${number}. ${title}:`, 15, yPos);
+                yPos += 6;
+                const splitText = doc.splitTextToSize(text || '-', 180);
+                doc.text(splitText, 15, yPos);
+                yPos += (splitText.length * 5) + 5;
+            };
+
+            // 1. Количество студентов на начало периода (вручную)
+            addReportItem('1', 'Количество обучающихся в группе на ' + format(startDate, 'dd.MM.yy'), manualData.studentsStartCount);
+
+            // 2. Количество студентов на конец периода (автоматически)
+            addReportItem('2', 'Количество обучающихся в группе на ' + format(endDate, 'dd.MM.yy'), apiData.currentStudentCount);
+
+            // 3. Количество должников (вручную)
+            addReportItem('3', 'Количество обучающихся, имеющих академ. задолженность', manualData.academicDebtCount);
+            
+            // 4. Детализация по мероприятиям (автоматически)
             doc.setFont("Roboto", "normal");
-            doc.text(String(apiData.studentCount || '0'), 150, yPos);
-            yPos += 10;
-            
-            // ИЗМЕНЕНО: Пункт 2 (новая Детализация)
-            doc.setFont("Roboto", "bold");
-            doc.text(`2. Детализация по мероприятиям:`, 15, yPos);
+            doc.text(`4. Детализация по мероприятиям:`, 15, yPos);
             yPos += 7;
-            
             const addBreakdownSection = (title, data, nameKey, countKey) => {
                 doc.setFont("Roboto", "bold");
                 doc.text(title, 20, yPos);
@@ -78,40 +106,29 @@ const FinalReportDialog = ({ open, onClose, forCuratorId }) => {
                         doc.text(`- ${item[nameKey]}: ${item[countKey]}`, 25, yPos);
                         yPos += 5;
                     });
-                } else {
-                    doc.text("- нет данных", 25, yPos);
-                    yPos += 5;
-                }
+                } else { doc.text("- нет данных", 25, yPos); yPos += 5; }
             };
             addBreakdownSection("По уровням", apiData.reportsByLevel, 'levelName', 'reportCount');
-            yPos += 2;
             addBreakdownSection("По форматам", apiData.reportsByFormat, 'formatName', 'reportCount');
-            yPos += 2;
             addBreakdownSection("По направлениям", apiData.reportsByDirection, 'directionName', 'reportCount');
             yPos += 5;
+
+            // 5. Отчет об участии (автоматически)
+            addMultiLineItem('5', 'Отчет об участии группы в мероприятиях', apiData.eventParticipationReport);
             
-            // ИЗМЕНЕНО: Пункт 3 (бывший 5)
-            doc.setFont("Roboto", "bold");
-            doc.text(`3. Отчет об участии группы в мероприятиях:`, 15, yPos);
-            yPos += 6;
-            doc.setFont("Roboto", "normal");
-            const splitText = doc.splitTextToSize(apiData.eventParticipationReport || '-', 180);
-            doc.text(splitText, 15, yPos);
-            yPos += (splitText.length * 5) + 5;
-            
-            // ИЗМЕНЕНО: Увеличено расстояние между подписями
+            // Подписи
             yPos = doc.internal.pageSize.getHeight() - 50;
             doc.setFont("Roboto", "normal");
             doc.text(`«__» ___________ ${new Date().getFullYear()} г.`, 15, yPos);
-            doc.text(`Куратор ______________ / ${apiData.curatorName || ''} /`, 110, yPos, { align: 'right' });
+            doc.text(`Куратор ______________ / ${apiData.curatorName || ''} /`, 200, yPos, { align: 'right' });
             
-            yPos += 20; // Увеличиваем отступ
+            yPos += 20;
             doc.text(`УТВЕРЖДЕНО:`, 15, yPos);
             yPos += 7;
             doc.text(`Декан _________________`, 15, yPos);
-            doc.text(`______________ / ${deanName || ''} /`, 110, yPos, { align: 'right' });
+            doc.text(`______________ / ${manualData.deanName || ''} /`, 110, yPos, { align: 'right' });
 
-            doc.save(`Отчет_${apiData.groupName.replace(/\s/g, '_')}_${formattedStartDate}-${formattedEndDate}.pdf`);
+            doc.save(`Отчет_${apiData.groupName.replace(/\s/g, '_')}.pdf`);
             onClose();
 
         } catch (err) {
@@ -128,29 +145,38 @@ const FinalReportDialog = ({ open, onClose, forCuratorId }) => {
                 <DialogContent>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                         <Grid item xs={12} sm={6}>
-                            <DatePicker
-                                label="Дата начала"
-                                value={startDate}
-                                onChange={setStartDate}
-                                slotProps={{ textField: { fullWidth: true } }}
+                            <DatePicker label="Дата начала" value={startDate} onChange={setStartDate} slotProps={{ textField: { fullWidth: true } }} />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <DatePicker label="Дата окончания" value={endDate} onChange={setEndDate} minDate={startDate} slotProps={{ textField: { fullWidth: true } }} />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                name="studentsStartCount"
+                                label="Кол-во студентов на начало периода"
+                                value={manualData.studentsStartCount}
+                                onChange={handleInputChange}
+                                fullWidth
+                                type="number"
                             />
                         </Grid>
                         <Grid item xs={12} sm={6}>
-                            <DatePicker
-                                label="Дата окончания"
-                                value={endDate}
-                                onChange={setEndDate}
-                                minDate={startDate}
-                                slotProps={{ textField: { fullWidth: true } }}
+                            <TextField
+                                name="academicDebtCount"
+                                label="Кол-во студентов с задолженностью"
+                                value={manualData.academicDebtCount}
+                                onChange={handleInputChange}
+                                fullWidth
+                                type="number"
                             />
                         </Grid>
-                        {/* ИЗМЕНЕНО: Добавлено поле для ФИО декана */}
                         <Grid item xs={12}>
                              <TextField
                                 fullWidth
+                                name="deanName"
                                 label="ФИО декана (для подписи)"
-                                value={deanName}
-                                onChange={(e) => setDeanName(e.target.value)}
+                                value={manualData.deanName}
+                                onChange={handleInputChange}
                                 variant="outlined"
                                 size="small"
                             />

@@ -639,3 +639,27 @@ exports.exportEvents = async (req, res) => {
         }
     }
 };
+
+exports.getEventsForReportLookup = async (req, res) => {
+    try {
+        const events = await Event.findAll({
+            where: {
+                // Фильтр 1: Только мероприятия, созданные текущим пользователем
+                createdByUserId: req.user.id,
+                
+                // Фильтр 2: Только мероприятия со статусом "Запланировано"
+                status: 'Запланировано'
+            },
+            // Возвращаем данные в формате, удобном для фронтенда { id, name }
+            attributes: [
+                ['event_id', 'id'],
+                ['title', 'name']
+            ],
+            order: [['startDate', 'DESC']] // Сортируем по дате (сначала новые)
+        });
+        res.json(events);
+    } catch (error) {
+        console.error('Error fetching events for report lookup:', error);
+        res.status(500).json({ message: 'Ошибка при загрузке списка мероприятий' });
+    }
+};

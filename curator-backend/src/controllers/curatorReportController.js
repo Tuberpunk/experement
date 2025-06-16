@@ -18,25 +18,16 @@ exports.loadReport = async (req, res, next) => {
     try {
         const report = await CuratorReport.findByPk(req.params.id, {
             include: [
-                {
-                    model: User,
-                    as: 'Curator',
-                    attributes: ['userId', 'fullName', 'email']
-                },
+                { model: User, as: 'Curator', attributes: ['userId', 'fullName', 'email'] },
                 {
                     model: Event,
                     as: 'RelatedEvent',
                     attributes: ['eventId', 'title', 'locationText', 'foreignerCount', 'minorCount', 'startDate', 'endDate'],
-                    include: [{
-                        model: EventDirection,
-                        as: 'Direction',
-                        attributes: ['name']
-                    }]
+                    include: [{ model: EventDirection, as: 'Direction', attributes: ['name'] }]
                 },
                 {
                     model: Student,
                     as: 'ParticipantStudents',
-                    // ИСПРАВЛЕНО: Запрашиваем 'fullName' вместо отдельных полей
                     attributes: ['studentId', 'fullName', 'email'], 
                     through: { attributes: [] } 
                 }
@@ -47,33 +38,27 @@ exports.loadReport = async (req, res, next) => {
             return res.status(404).json({ message: 'Отчет куратора не найден' });
         }
 
+        // --- КЛЮЧЕВАЯ ПРОВЕРКА ПРАВ ---
+        // Разрешаем доступ, если пользователь - администратор ИЛИ он является автором этого отчета.
         if (req.user.role !== 'administrator' && req.user.id !== report.curatorUserId) {
             return res.status(403).json({ message: 'Доступ запрещен' });
         }
 
-        req.report = report;
-        next();
+        req.report = report; // Прикрепляем отчет к запросу
+        next(); // Передаем управление следующему обработчику (например, getReportById или deleteReport)
     } catch (error) {
         console.error('Error loading report by ID:', error);
         res.status(500).json({ message: 'Ошибка сервера при загрузке отчета куратора' });
     }
 };
 
-exports.deleteReport = async (req, res) => {
-    // req.report is attached by loadReport middleware
-    try {
-        // Basic check: only admin or the report's curator can delete
-        // More complex logic (e.g., cannot delete if event is 'Проведено') can be added here
-        // This check is somewhat redundant if loadReport already did a similar check for access,
-        // but ensures delete operation also re-validates if needed.
-        if (req.user.role !== 'administrator' && req.user.id !== req.report.curatorUserId) {
-            // loadReport should already handle cases where user is not admin and not author for viewing
-            // but for deletion, an explicit re-check or ensuring loadReport's permissions are sufficient
-            // return res.status(403).json({ message: "Доступ запрещен: вы не можете удалить этот отчет." });
-        }
 
+// Функция для удаления отчета
+exports.deleteReport = async (req, res) => {
+    // Middleware 'loadReport' уже выполнился, проверил права и прикрепил отчет в req.report
+    try {
         await req.report.destroy();
-        res.status(204).send(); // No content
+        res.status(204).send(); // Успех, нет содержимого
     } catch (error) {
         console.error('Error deleting curator report:', error);
         res.status(500).json({ message: 'Ошибка сервера при удалении отчета куратора' });
@@ -429,7 +414,6 @@ exports.getAggregatedReportData = async (req, res) => {
     try {
         const targetUserId = (role === 'administrator' && req.query.forCuratorId) ? parseInt(req.query.forCuratorId, 10) : userId;
         
-        // Условие для фильтрации отчетов, которое будет использоваться в нескольких запросах
         const reportWhereCondition = {
             curatorUserId: targetUserId,
             reportDate: { [Op.between]: [new Date(startDate), new Date(endDate)] }
@@ -443,20 +427,19 @@ exports.getAggregatedReportData = async (req, res) => {
         const group = curator.ManagedGroups && curator.ManagedGroups[0];
         const groupId = group ? group.groupId : null;
         
-        // 2. Считаем студентов
+        // 2. Считаем ТЕКУЩЕЕ количество студентов в группе
         const studentCount = groupId ? await Student.count({ where: { groupId, isActive: true } }) : 0;
         
-        // 3. Собираем все отчеты за период
+        // 3. Собираем список названий мероприятий за период
         const reports = await CuratorReport.findAll({
             where: reportWhereCondition,
             order: [['reportDate', 'ASC']]
         });
-        
         const participationInEvents = reports
-            .filter(r => r.eventId)
+            .filter(r => r.reportTitle) // Берем все заголовки отчетов
             .map(r => r.reportTitle);
             
-        // 4. ДОБАВЛЕНО: Собираем детализацию по мероприятиям (уровни, форматы, направления)
+        // 4. Собираем детализацию по мероприятиям, связанным с отчетами
         const reportsByLevel = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Level.name'), 'levelName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventLevel, as: 'Level', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Level.name')], raw: true });
         const reportsByFormat = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Format.name'), 'formatName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventFormat, as: 'Format', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Format.name')], raw: true });
         const reportsByDirection = await CuratorReport.findAll({ attributes: [[sequelize.col('RelatedEvent.Direction.name'), 'directionName'], [sequelize.fn('COUNT', sequelize.col('CuratorReport.report_id')), 'reportCount']], include: [{model: Event, as: 'RelatedEvent', attributes: [], required: true, include: [{ model: EventDirection, as: 'Direction', attributes: [], required: true }]}], where: { ...reportWhereCondition, eventId: { [Op.ne]: null } }, group: [sequelize.col('RelatedEvent.Direction.name')], raw: true });
@@ -464,11 +447,10 @@ exports.getAggregatedReportData = async (req, res) => {
 
         // 5. Формируем итоговые данные
         const finalData = {
-            groupName: group ? `${group.groupName}` : 'Группа не найдена',
-            studentCount: studentCount,
-            eventParticipationReport: participationInEvents.length > 0 ? participationInEvents.map(e => `- ${e}`).join('\n') : 'Участие в мероприятиях не зафиксировано.',
+            groupName: group ? group.groupName : 'Группа не найдена',
             curatorName: curator.fullName,
-            // Добавляем новые данные для детализации
+            currentStudentCount: studentCount, // Текущее количество студентов
+            eventParticipationReport: participationInEvents.length > 0 ? participationInEvents.map(e => `- ${e}`).join('\n') : 'Участие в мероприятиях не зафиксировано.',
             reportsByLevel,
             reportsByFormat,
             reportsByDirection,
@@ -480,6 +462,7 @@ exports.getAggregatedReportData = async (req, res) => {
         console.error('Error fetching aggregated report data:', error);
         res.status(500).json({ message: 'Ошибка сервера при сборе данных для отчета' });
     }
+    
 };
 
 // PUT /api/curator-reports/:id - Обновление отчета

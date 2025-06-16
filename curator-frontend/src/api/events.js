@@ -132,3 +132,13 @@ export const exportEvents = async (filterParams = {}) => {
        }
   }
 };
+
+export const getEventsForReportLookup = async () => {
+    try {
+        const response = await apiClient.get('/events/for-report-lookup');
+        return response.data;
+    } catch (error) {
+        console.error("API Error fetching events for report lookup:", error);
+        throw error;
+    }
+};
