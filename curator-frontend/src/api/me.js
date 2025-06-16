@@ -45,3 +45,25 @@ export const changeMyPassword = async (passwordData) => {
         throw error; // Пробрасываем ошибку для обработки в компоненте
     }
 };
+
+export const getUserProfile = async () => {
+    try {
+        const response = await apiClient.get('/me');
+        return response.data;
+    } catch (error) {
+        console.error("API Error fetching user profile:", error);
+        throw error;
+    }
+};
+
+// --- ДОБАВЬТЕ ЭТУ НОВУЮ ФУНКЦИЮ ---
+export const updateUserProfile = async (profileData) => {
+    try {
+        // Отправляем PUT запрос на эндпоинт /me
+        const response = await apiClient.put('/me', profileData);
+        return response.data;
+    } catch (error) {
+        console.error("API Error updating user profile:", error);
+        throw error;
+    }
+};

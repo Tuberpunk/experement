@@ -7,13 +7,22 @@ import * as yup from 'yup';
 import {
     Container, Typography, TextField, Button, Grid, Box, Paper, CircularProgress, Alert, Snackbar, Link,
     Select, MenuItem, FormControl, InputLabel, FormHelperText
-
 } from '@mui/material';
 import { registerUser } from '../api/auth';
-import { useAuth } from '../contexts/AuthContext'; // Для регистрации
-// --- Схема валидации БЕЗ РОЛИ ---
+
+// 1. Создаем статический массив с вариантами должностей
+const positionOptions = [
+    'Преподаватель',
+    'Старший преподаватель',
+    'Доцент',
+    'Профессор',
+    'Специалист по учебно-методической работе',
+    'Заместитель декана по воспитательной работе',
+];
+
+// --- Схема валидации с обязательным полем position ---
 const registrationSchema = yup.object().shape({
-fullName: yup.string().required('ФИО обязательно'),
+    fullName: yup.string().required('ФИО обязательно'),
     email: yup.string().email('Некорректный email').required('Email обязателен'),
     password: yup.string()
         .required('Пароль обязателен')
@@ -21,12 +30,11 @@ fullName: yup.string().required('ФИО обязательно'),
         .matches(/[a-z]/, 'Пароль должен содержать хотя бы одну строчную букву')
         .matches(/[A-Z]/, 'Пароль должен содержать хотя бы одну заглавную букву')
         .matches(/[0-9]/, 'Пароль должен содержать хотя бы одну цифру')
-        .matches(/[\W_]/, 'Пароль должен содержать хотя бы один специальный символ (например, !@#$%)'), // \W эквивалентно [^a-zA-Z0-9_], _ добавляем отдельно если он нужен
+        .matches(/[\W_]/, 'Пароль должен содержать хотя бы один специальный символ'),
     confirmPassword: yup.string()
         .oneOf([yup.ref('password'), null], 'Пароли должны совпадать')
         .required('Подтверждение пароля обязательно'),
-    // roleName убран из схемы
-    position: yup.string().nullable(),
+    position: yup.string().required('Должность обязательна'), // ИЗМЕНЕНО: теперь поле обязательное
     phoneNumber: yup.string().nullable(),
     department: yup.string().nullable(),
 });
@@ -38,12 +46,11 @@ function RegisterPage() {
 
     const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm({
         resolver: yupResolver(registrationSchema),
-        defaultValues: { // Убираем roleName из defaultValues
+        defaultValues: {
             fullName: '',
             email: '',
             password: '',
             confirmPassword: '',
-            // roleName: '', <-- Убрано
             position: '',
             phoneNumber: '',
             department: '',
@@ -52,11 +59,8 @@ function RegisterPage() {
 
     const onSubmit = async (data) => {
         setFormError('');
-        // Убираем confirmPassword, roleName и так не придет
         const { confirmPassword, ...registrationData } = data;
-
         try {
-            // Отправляем данные БЕЗ roleName, бэкенд назначит 'curator'
             const response = await registerUser(registrationData);
             setSnackbar({ open: true, message: response.message || 'Регистрация прошла успешно! Теперь вы можете войти.', severity: 'success' });
             setTimeout(() => navigate('/login'), 2000);
@@ -100,17 +104,37 @@ function RegisterPage() {
                             <Controller name="confirmPassword" control={control} render={({ field }) => <TextField {...field} label="Подтвердите пароль" type="password" required fullWidth error={!!errors.confirmPassword} helperText={errors.confirmPassword?.message} autoComplete="new-password" />} />
                         </Grid>
 
-                        {/* --- Поле выбора роли УБРАНО --- */}
-
-                        {/* --- Необязательные поля "Мини-анкета" --- */}
-                        <Grid item xs={12}><Typography variant="caption">Дополнительная информация (необязательно)</Typography></Grid>
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="position" control={control} render={({ field }) => <TextField {...field} label="Должность" fullWidth />} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <Controller name="department" control={control} render={({ field }) => <TextField {...field} label="Подразделение/Кафедра/Группа" fullWidth />} />
-                        </Grid>
+                        {/* ИЗМЕНЕНО: Поле "Должность" теперь выпадающий список */}
                         <Grid item xs={12}>
+                            <FormControl fullWidth required error={!!errors.position}>
+                                <InputLabel id="position-select-label">Должность</InputLabel>
+                                <Controller
+                                    name="position"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Select
+                                            {...field}
+                                            labelId="position-select-label"
+                                            label="Должность"
+                                        >
+                                            <MenuItem value="" disabled><em>Выберите должность...</em></MenuItem>
+                                            {positionOptions.map((pos) => (
+                                                <MenuItem key={pos} value={pos}>
+                                                    {pos}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    )}
+                                />
+                                {errors.position && <FormHelperText>{errors.position.message}</FormHelperText>}
+                            </FormControl>
+                        </Grid>
+                        
+                        {/* --- Необязательные поля --- */}
+                        <Grid item xs={12} sm={6}>
+                             <Controller name="department" control={control} render={({ field }) => <TextField {...field} label="Подразделение/Кафедра" fullWidth />} />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
                              <Controller name="phoneNumber" control={control} render={({ field }) => <TextField {...field} label="Контактный телефон" fullWidth />} />
                         </Grid>
 
@@ -135,7 +159,6 @@ function RegisterPage() {
                 </Box>
             </Paper>
 
-            {/* Snackbar для уведомлений */}
             <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
                 <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">{snackbar.message}</Alert>
             </Snackbar>

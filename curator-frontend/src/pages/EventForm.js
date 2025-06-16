@@ -28,24 +28,16 @@ import { getEventDirections, getEventLevels, getEventFormats, getParticipantCate
 import { getMyStudentsForReport } from '../api/curatorReports';
 import FileUploader from '../components/FileUploader';
 
-// --- Данные для подсказок ---
-const ugtuLocations = [
-    { label: 'Главный корпус (А)', address: 'г. Ухта, ул. Первомайская, д. 13' },
-    { label: 'Корпус Б', address: 'г. Ухта, ул. Первомайская, д. 9' },
-    { label: 'Корпус В', address: 'г. Ухта, ул. Первомайская, д. 11' },
-    { label: 'Корпус Г', address: 'г. Ухта, ул. Октябрьская, д. 13' },
-    { label: 'Корпус Д', address: 'г. Ухта, ул. Октябрьская, д. 13' },
-    { label: 'Корпус Е', address: 'г. Ухта, ул. Сенюкова, д. 13' },
-    { label: 'Корпус К (Колледж)', address: 'г. Ухта, ул. Октябрьская, д. 26' },
-    { label: 'Корпус Л', address: 'г. Ухта, ул. Сенюкова, д. 15' },
-    { label: 'Корпус Н', address: 'г. Ухта, ул. Первомайская, д. 44а' },
-    { label: 'Бизнес-инкубатор', address: 'г. Ухта, ул. Сенюкова, д. 13' },
-    { label: 'Спортивный комплекс "Буревестник"', address: 'г. Ухта, ул. Мира, д. 13а' },
-    { label: 'Бассейн "Буревестник"', address: 'г. Ухта, ул. Мира, д. 13а' },
-    { label: 'Общежитие №1', address: 'г. Ухта, ул. Мира, д. 13' },
-    { label: 'Общежитие №2', address: 'г. Ухта, ул. Мира, д. 11' },
+
+const locationOptions = [
+    'Корпус А',
+    'Корпус Б',
+    'Корпус В',
+    'Корпус Л',
+    'Корпус К',
+    'Онлайн (платформа)',
+    'Буревестник',
 ];
-// ---------------------------
 
 // --- Схема валидации Yup ---
 const eventSchema = yup.object().shape({
@@ -360,19 +352,48 @@ function EventForm({ mode }) {
                         </Grid>
 
                         {/* --- Секция 2: Место проведения --- */}
-                        <Grid item xs={12} sx={{mb: 2}}>
-                            <Accordion>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography variant="h6">2. Место проведения</Typography>
-                                </AccordionSummary>
-                                <AccordionDetails>
-                                    <Grid container spacing={2}>
-                                        <Grid item xs={12} sm={6}> <Controller name="locationText" control={control} defaultValue="" render={({ field: { onChange, value } }) => ( <Autocomplete freeSolo options={ugtuLocations} getOptionLabel={(option) => (typeof option === 'object' ? option.label : option) || ''} isOptionEqualToValue={(option, val) => option.label === val?.label} inputValue={value || ''} onInputChange={(_, newInputValue, reason) => { if (reason === 'input') { onChange(newInputValue); setValue('addressText', ''); } }} onChange={(_, newValue) => { if (typeof newValue === 'object' && newValue !== null) { onChange(newValue.label); setValue('addressText', newValue.address || '', { shouldValidate: true }); } else if (typeof newValue === 'string') { onChange(newValue); setValue('addressText', ''); } else { onChange(''); setValue('addressText', ''); } }} renderInput={(params) => ( <TextField {...params} label="Место проведения (или объект УГТУ)" fullWidth size="small"/> )} /> )} /> </Grid>
-                                        <Grid item xs={12} sm={6}> <Controller name="addressText" control={control} render={({ field }) => <TextField {...field} label="Адрес проведения" fullWidth size="small" InputProps={{ readOnly: ugtuLocations.some(loc => loc.label === watchLocationText) }} error={!!errors.addressText} helperText={errors.addressText?.message || (ugtuLocations.some(loc => loc.label === watchLocationText) ? 'Адрес заполнен автоматически' : 'Укажите, если место не объект УГТУ')} />} /> </Grid>
-                                    </Grid>
-                                </AccordionDetails>
-                            </Accordion>
-                        </Grid>
+                                                    <Grid item xs={12} sm={6}>
+    <FormControl fullWidth required error={!!errors.locationText}>
+        <InputLabel id="location-select-label">Место проведения</InputLabel>
+        <Controller
+            name="locationText"
+            control={control}
+            defaultValue=""
+            render={({ field }) => (
+                <Select
+                    {...field}
+                    labelId="location-select-label"
+                    label="Место проведения"
+                >
+                    <MenuItem value="" disabled><em>Выберите место...</em></MenuItem>
+                    {locationOptions.map((location) => (
+                        <MenuItem key={location} value={location}>
+                            {location}
+                        </MenuItem>
+                    ))}
+                </Select>
+            )}
+        />
+        {errors.locationText && <FormHelperText>{errors.locationText.message}</FormHelperText>}
+    </FormControl>
+</Grid>
+
+{/* Поле 2: Текстовое поле для АДРЕСА */}
+<Grid item xs={12} sm={6}>
+    <Controller
+        name="address"
+        control={control}
+        render={({ field }) => (
+            <TextField
+                {...field}
+                label="Адрес (кабинет, уточнение)"
+                fullWidth
+                error={!!errors.address}
+                helperText={errors.address?.message}
+            />
+        )}
+    />
+</Grid>
 
                         {/* --- Секция 3: Участники --- */}
                         <Grid item xs={12} sx={{mb: 2}}>
